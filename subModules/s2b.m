@@ -1,0 +1,9 @@
+function bigOmega = s2b(smallOmega)
+wx = smallOmega(1);
+wy = smallOmega(2);
+wz = smallOmega(3);
+bigOmega = [0, -wx, -wy, -wz; ...
+            wx, 0, wz, -wy; ...
+            wy, -wz, 0, wx; ...
+            wz, wy, -wx, 0];
+end
