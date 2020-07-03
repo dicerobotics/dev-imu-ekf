@@ -44,7 +44,6 @@ aG = [0 0 9.8]'; % Gravitational Acceleration, NED Frame
 vPred = vPrev + (nRb * (aMeasPrev - aBiasPrev) - aG) * dt;
 % Quaternion Prediction
 qPred = (eye(4) + (dt/2) * (s2b(wMeasPrev) - s2b(wBiasPrev)))*qPrev;
-
 % Angular Bias Prediction
 wBiasPred = eye(3) * wBiasPrev;
 % Angular Acceleration Prediction

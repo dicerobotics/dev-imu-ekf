@@ -6,16 +6,16 @@ function [zMeas, wMeas, aMeas, zTrue, R] = measSensorReading(k, gpsLLARef)
 % email:            m.awais@kaist.ac.kr
 % Code Ref:         https://openimu.readthedocs.io/en/latest/algorithms.html
 global stdGyro stdAcc
-
+global stdGpsPos stdGpsVel stdEuler
 % It is assumed that Euler angles are available on board for correction. Values
 % avaialbe in dataset. In practicle scenario, they are calculated with 
 % the help of accelerometer and magnetometer using earth gravity and earth 
 % magnetic field as a reference.
 
-stdGpsPos = [0.1, 0.1, 0.3]; %Stand. Dev. of GPS Pos Measurement, meters 
-stdGpsVel = [0.05, 0.05, 0.1]; %Std. dev. of GPS Vel Measurement, meters/sec
-stdEuler = [0.01, 0.01, 0.01]; %Std. dev. of euler ang. meas. error, rad/sec
-R = diag([stdGpsPos, stdGpsVel, stdEuler]); %Sensor meas. noise cov. matrix
+% stdGpsPos = [0.1, 0.1, 0.3]; %Stand. Dev. of GPS Pos Measurement, meters 
+% stdGpsVel = [0.05, 0.05, 0.1]; %Std. dev. of GPS Vel Measurement, meters/sec
+% stdEuler = [0.01, 0.01, 0.01]; %Std. dev. of euler ang. meas. error, rad/sec
+R = diag([stdGpsPos, stdGpsVel, stdEuler].^2); %Sensor meas. noise cov. matrix
 
 
 %Define Indices accroding to data files
@@ -64,7 +64,7 @@ vTrue = [data(vnIdx), data(veIdx), -data(vuIdx)]';
 eulerTrue = [data(rollIdx), data(pitchIdx), data(yawIdx)]';
 
 zTrue = [rTrue; vTrue; eulerTrue];
-zMeas = zTrue + diag(R) .* randn(size(zTrue));
+zMeas = zTrue + sqrt(diag(R)) .* randn(size(zTrue));
 aTrue = [data(axIdx), data(ayIdx), data(azIdx)]';
 wTrue = [data(wxIdx), data(wyIdx), data(wzIdx)]';
 wMeas = wTrue + stdGyro * rand(3,1);

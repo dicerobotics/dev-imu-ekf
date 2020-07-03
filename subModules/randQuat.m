@@ -27,7 +27,12 @@ function out = randQuat()
 % w = -1 + 2 * rand;
 % out = real([sqrt(1-u)*sin(2*pi*v), sqrt(1-u)*cos(2*pi*v), sqrt(u)*sin(2*pi*w), sqrt(u)*cos(2*pi*w)])';
 
+% v = rand(3,1);
+% v = v/norm(v);
+% out = [rand; v];
+theta = 2*pi*rand - pi;
 v = rand(3,1);
-v = v/norm(v);
-out = [rand; v];
+vNorm = v/norm(v);
+
+out = [cos(theta/2); vNorm*sin(theta/2)];
 end
