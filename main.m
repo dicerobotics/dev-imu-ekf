@@ -52,6 +52,7 @@ dt = 0.1;   % Sample Time
 resXEst = zeros(16,N+1,M); % Monte-Carlo estimates
 resXEstErr = zeros(16,N+1,M); % Monte-Carlo estimate errors
 resPDiag = zeros(16,N+1); % diagonal term of estimation error covariance matrix
+xTrue = zeros(19, N+1);
 
 % filtering
 for m = 1:1:M
@@ -101,7 +102,12 @@ for m = 1:1:M
 
         %Step 7: State Estimation/Update
         xEst(:,n) = xPred + K * (zMeas - h);
-        xTrue(:,n) = xPred + K * (zTrue - h); % Just for analysis
+        if m==1
+            xTrue(1:6,n) = zTrue(1:6,1);
+            xTrue(7:10,n) = euler2quat(zTrue(7:9,1));
+            xTrue(11:16,n) = zeros(6,1);
+            xTrue(17:19,n) = zTrue(7:9,1);
+        end
 
         %Step 8: Error Covariance Estimation/Update
         PEst = (eye(16) - K*H)*PPred;
@@ -111,13 +117,19 @@ for m = 1:1:M
         PPrev = PEst;
         wMeasPrev = wMeas;
         aMeasPrev = aMeas;
+        if (m == 1)
+            xTrue(11:16,n) = xEst(11:16,n); %Bug
+        end
     end
     PDiagComp = [PDiagIni, PDiag];
     xEstComp = [xErrIni, xEst];
-    xTrueComp = [xTrueIni, xTrue]; %For analysis only, No practical use
+    if (m == 1)
+        xTrueIni(17:19,1) = quat2euler(xTrueIni(7:10, 1)); %Data augmented for analysis only
+        xTrue = [xTrueIni, xTrue(:,1:N)]; %For analysis only
+    end
     resXEst(:,:,m) = xEstComp;
-    resXTrue(:,:,m) = xTrueComp;    %For analysis only
-    resXEstErr(:,:,m) = xEstComp - xTrueComp;
+%    resXTrue(:,:,m) = xTrueComp;    %For analysis only
+    resXEstErr(:,:,m) = xEstComp - xTrue(1:16,:);
     resPDiag(:,:,m) = PDiagComp;
 end
 
@@ -126,12 +138,12 @@ xEstAVG = mean(resXEst,3); %Average of all monte carlo runs
 xEstErrAVG = mean(resXEstErr,3); %Average of all monte carlo runs
 x_RMSE = zeros(size(resXEstErr, 1),N+1); % root mean square error
 PDiagAVG = mean(resPDiag,3);
-xTrue = mean(resXTrue,3); %Meaningless quantity. 4
+% xTrue = mean(resXTrue,3); %Meaningless quantity. 4
 
 for n = 1:1:N+1
-    xEstAVG(17:19,n) = quat2euler(xEstAVG(7:10));
-    xEstErrAVG(17:19,n) = quat2euler(xEstErrAVG(7:10));
-    xTrue(17:19,n) = quat2euler(xTrue(7:10));
+    xEstAVG(17:19,n) = quat2euler(xEstAVG(7:10)); %Data augmented with euler angles for analysis purpose
+    xEstErrAVG(17:19,n) = quat2euler(xEstErrAVG(7:10)); %Data augmented with euler angles for analysis purpose
+    xTrue(17:19,n) = quat2euler(xTrue(7:10)); %Data augmented with euler angles for analysis purpose
     for m = 1:1:size(resXEstErr, 1)
         x_RMSE(m,n) = sqrt(mean(resXEstErr(m,n,:).^2,3));
     end
@@ -185,20 +197,20 @@ dispEstErr_3SigmaBound_GyroBias(xEstAVG, xEstErrAVG, PDiagComp, NoOfSamples, sam
 dispEstErr_3SigmaBound_GyroBias(xEstAVG, xEstErrAVG, PDiagComp, NoOfSamples, sampleTime, xWBIdx); suptitle('Acceleration Bias Error with 3-Sigma Bounds View and Absolute Gyro Bias');
 dispEstErr_3SigmaBound_GyroBias(xEstAVG, xEstErrAVG, PDiagComp, NoOfSamples, sampleTime, xABIdx); suptitle('Angular Velocity Error with 3-Sigma Bounds View and Absolute Gyro Bias');
 
-dispEstStates3D(resXTrue, resXEst, xPosIdx); suptitle('True/Estimated Position, ');
-dispEstStates3D(resXTrue, resXEst, xVelIdx); suptitle('True/Estimated Velocity, ');
+dispEstStates3D(xTrue, xEstAVG, xPosIdx); suptitle('True/Estimated Position, ');
+dispEstStates3D(xTrue, xEstAVG, xVelIdx); suptitle('True/Estimated Velocity, ');
 % 
 
 
 end
 
 
-function dispEstStates(xTrueAVG, xEstAVG, NoOfSamples, sampleTime, stateNum)
+function dispEstStates(xTrue, xEstAVG, NoOfSamples, sampleTime, stateNum)
 figure('Name', 'Time history of an estimation results');
 time = (0:1:NoOfSamples)*sampleTime;
 for n = 1:1:length(stateNum)
     subplot(length(stateNum),1,n); hold on;
-    plot(time, xTrueAVG(stateNum(n),:), 'linewidth', 2);
+    plot(time, xTrue(stateNum(n),:), 'linewidth', 2);
     plot(time, xEstAVG(stateNum(n),:), '--', 'linewidth', 2);
     legend({'True', 'Estimated'}, 'fontsize', 12);
     xlabel('Time (sec)', 'fontsize', 12);
@@ -225,11 +237,11 @@ end
 
 
 
-function dispEstStates3D(resXTrue, resXEst, sVec3D)
+function dispEstStates3D(xTrue, xEstAVG, sVec3D)
 % time = (0:1:NoOfSamples)*sampleTime;
 figure('Name', 'estimation results comparison in 3D');
-plot3(resXTrue(sVec3D(1),:, 1), resXTrue(sVec3D(2),:, 1), resXTrue(sVec3D(3),:, 1), '-o','MarkerSize',5); hold on;
-plot3(resXEst(sVec3D(1),:, 1), resXEst(sVec3D(2),:, 1), resXEst(sVec3D(3),:, 1), '-o','MarkerSize',5);
+plot3(xTrue(sVec3D(1),:), xTrue(sVec3D(2),:), xTrue(sVec3D(3),:), '-o','MarkerSize',5); hold on;
+plot3(xEstAVG(sVec3D(1),:), xEstAVG(sVec3D(2),:), xEstAVG(sVec3D(3),:), '-o','MarkerSize',5);
 legend({'True', 'Estimated'}, 'fontsize', 12);
 xlabel('X', 'fontsize', 12); ylabel('Y', 'fontsize', 12); zlabel('Z', 'fontsize', 12);
 grid on;
@@ -256,7 +268,7 @@ for n = 1:1:length(stateNum)
     elseif (n >= 11) && (n <= 13)   %Accelerometer Bias
         biasAcc = plot(time, xEstAVG(3+n,:), 'b--', 'linewidth', 2);
     elseif (n >= 14) && (n <= 16)   %Gyro Bias
-        bias = plot(time, xEstAVG(0+n,:), 'b--', 'linewidth', 2);
+        biasAcc = plot(time, xEstAVG(0+n,:), 'b--', 'linewidth', 2);
     elseif (n >= 17) && (n <= 19)   %Euler Angles
         biasAcc = plot(time, xEstAVG(-3+n,:), 'b--', 'linewidth', 2);
     end
@@ -318,7 +330,7 @@ for n = 1:1:length(stateNum)
     elseif (n >= 11) && (n <= 13)   %Accelerometer Bias
         biasAcc = plot(time, xEstAVG(3+n,:), 'b--', 'linewidth', 2);
     elseif (n >= 14) && (n <= 16)   %Gyro Bias
-        bias = plot(time, xEstAVG(0+n,:), 'b--', 'linewidth', 2);
+        biasAcc = plot(time, xEstAVG(0+n,:), 'b--', 'linewidth', 2);
     elseif (n >= 17) && (n <= 19)   %Euler Angles
         biasAcc = plot(time, xEstAVG(-3+n,:), 'b--', 'linewidth', 2);
     end
