@@ -11,8 +11,11 @@ global stdGyro stdAcc stdDriftDotGyro stdDriftDotAcc
 qPrev = xPrev(7:10);
 wBiasPrev = xPrev(11:13);
 aBiasPrev = xPrev(14:16);
-aPrev = aMeasPrev - aBiasPrev;    
+aPrev = aMeasPrev - aBiasPrev;
 
+% aG = [0 0 9.8]'; % Gravitational Acceleration, NED Frame
+% nRb = quat2rot(qPrev)'; bRn = nRb';
+% aPrev = bRn*(nRb * (aMeasPrev - aBiasPrev) - aG);
 q0 = qPrev(1); q1 = qPrev(2); q2 = qPrev(3); q3 = qPrev(4);
 Qf = [q1, q0, -q3, q2; ... 
       q2, q3, q0, -q1; ...
@@ -31,7 +34,7 @@ iT = [-qV; ...
        qPrev(1)*eye(3)+qCrossMat];
 
 bigOmg = (s2b(wMeasPrev) - s2b(wBiasPrev));
-nRb = quat2rot(qPrev);
+nRb = quat2rot(qPrev)';
 z3 = zeros(3,3); i3 = eye(3); z34 = zeros(3,4); z43 = zeros(4,3); 
             
 f = [z3, i3, z34, z3, z3; ...
@@ -58,4 +61,5 @@ Q = [covR, z3, z34, z3, z3; ...
 
 %Q -> Process noise covariance matrix
 %P -> Process estimation error covariance matrix
+%R -> Measurement Noise Covariance Matrix
 end

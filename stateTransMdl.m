@@ -15,26 +15,29 @@ function [xPred] = stateTransMdl(xPrev, dt, aMeasPrev, wMeasPrev)%, stdAcc, stdG
 % q = [q0, q1, q2, q3]  Body Attitude, q0 is scalar
 % wb = [wbx, wby, wbz]  Angular Rate Bias, Body Frame
 % ab = [abx, aby, abz]  Accelerometer Bias, Body Frame
+
 % aMeasPrev -> Measured accelerameter reading in body frame
 % wMeasPrev -> Measured gyroscope reading in body frame
 
 global stdGyro stdAcc stdDriftDotGyro stdDriftDotAcc
+global gyroOffSet accOffSet
 %  gyro Offsets and accelerometer Offsets are assumed to be zero therefore
 %  gyro bias and gyro drift are equal. similarly accelerometer bias and
 %  accelerometer drift are also equal.
 persistent wNoise
 if isempty(wNoise)
-    wNoise = randn(3,1);
+    wNoise = zeros(3,1);
 end
 rPrev = xPrev(1:3);
 vPrev = xPrev(4:6);
 qPrev = xPrev(7:10);
 wBiasPrev = xPrev(11:13);
 aBiasPrev = xPrev(14:16);
-wNoise = wNoise + stdGyro * randn(size(wBiasPrev)); %Gyro's angular random walk (ARW)
-aNoise = 0 + stdAcc * randn(size(aBiasPrev)); % Accelerometer gaussian random noise
 
-nRb = quat2rot(qPrev);
+
+wNoise = wNoise + stdGyro * randn(size(wMeasPrev)); %Bug Suspicion, Gyro's angular random walk (ARW)
+aNoise = 0 + stdAcc * randn(size(aMeasPrev)); %Accelerometer gaussian random noise
+nRb = quat2rot(qPrev)';
 
 %% State Transition Vection
 % Position Prediction
@@ -45,35 +48,38 @@ vPred = vPrev + (nRb * (aMeasPrev - aBiasPrev) - aG) * dt;
 % Quaternion Prediction
 qPred = (eye(4) + (dt/2) * (s2b(wMeasPrev) - s2b(wBiasPrev)))*qPrev;
 % Angular Bias Prediction
-wBiasPred = eye(3) * wBiasPrev;
+wDriftPrev = wBiasPrev - gyroOffSet;
+wDriftPred = eye(3) * wDriftPrev;
+wBiasPred = gyroOffSet + wDriftPred;
 % Angular Acceleration Prediction
-aBiasPred = eye(3) * aBiasPrev;
-
+aDriftPrev = aBiasPrev - accOffSet;
+aDriftPred = eye(3) * aDriftPrev;
+aBiasPred = accOffSet + aDriftPred;
 % State Vector Prediction without process noise
 xPredNoiseFree = [rPred; vPred; qPred; wBiasPred; aBiasPred];
 
 %% Process Noise Vector
 % Position Elements
-wRPred = - nRb * aNoise * dt^2;
+wR = - nRb * aNoise * dt^2;
 % Velocity Elements
-wVPred = - nRb * aNoise * dt;
+wV = - nRb * aNoise * dt;
 % Quaternion Elements
 q0 = qPrev(1); q1 = qPrev(2); q2 = qPrev(3); q3 = qPrev(4);
 qCrossMat = crossProdMat([q1, q2, q3]');
 iT = [-[q1, q2, q3]; ...
         q0*eye(3)+qCrossMat];
-wQPred = -(dt/2) * iT * wNoise;
-% Angular Bias Elements
-wWBiasPred = stdDriftDotGyro * randn(3,1) * dt;
+wQ = -(dt/2) * iT * wNoise;
+% Angular Bias(Drift) Elements
+wWDriftDot = stdDriftDotGyro * randn(3,1) * dt;
 % Angular Acceleration Elements
-wABiasPred = stdDriftDotAcc * randn(3,1) * dt;
+wADriftDot = stdDriftDotAcc * randn(3,1) * dt;
 
 % Process Noise Vector
-wPred = [wRPred; wVPred; wQPred; wWBiasPred; wABiasPred];
+wProcessNoiseVec = [wR; wV; wQ; wWDriftDot; wADriftDot];
 
 %%
 % State vector prediction with process noise.
-xPred = xPredNoiseFree + wPred;
+xPred = xPredNoiseFree + wProcessNoiseVec;
 
 end
 
