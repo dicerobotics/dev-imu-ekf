@@ -2,7 +2,7 @@ function euler = rot2euler( dcm)
 % Adapted from matlab function dcm2angle with rotation sequence ZYX
 % Modified by:    	Awais Arshad
 % Modification Date:  July 9th, 2020
-
+dcm = dcm';
 [yaw,pitch,roll] = threeaxisrot( dcm(1,2), dcm(1,1), -dcm(1,3), ...
                                    dcm(2,3), dcm(3,3));
                               

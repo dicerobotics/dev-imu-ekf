@@ -1,4 +1,4 @@
-function [xPred] = stateTransMdl(xPrev, dt, aMeasPrev, wMeasPrev)%, stdAcc, stdGyro, stdDriftGyro, stdDriftAcc)
+function [xPred] = stateTransMdl(xPrev, dt, aMeasPrev, wMeasPrev, nRb)%, stdAcc, stdGyro, stdDriftGyro, stdDriftAcc)
 
 % Script Writer:	Awais Arshad
 % Association:      ASCL, KAIST
@@ -37,14 +37,15 @@ aBiasPrev = xPrev(14:16);
 
 wNoise = wNoise + stdGyro * randn(size(wMeasPrev)); %Bug Suspicion, Gyro's angular random walk (ARW)
 aNoise = 0 + stdAcc * randn(size(aMeasPrev)); %Accelerometer gaussian random noise
-nRb = quat2rot(qPrev)';
-
+nRb = quat2rot(qPrev); %Please test it, bug suspected
+% disp('nRb Prev inside stateTransMdl'); disp(nRb);
 %% State Transition Vection
 % Position Prediction
 rPred = rPrev + vPrev * dt;
 % Velocity Prediction
-aG = [0 0 9.8]'; % Gravitational Acceleration, NED Frame
-vPred = vPrev + (nRb * (aMeasPrev - aBiasPrev) - aG) * dt;
+aGTrue = [0 0 9.80665]';    %Gravitational Acceleration, NED Frame
+aGSensor = -aGTrue;         %Reason: See Important Note Below
+vPred = vPrev + (nRb * (aMeasPrev - aBiasPrev) - aGSensor) * dt;
 % Quaternion Prediction
 qPred = (eye(4) + (dt/2) * (s2b(wMeasPrev) - s2b(wBiasPrev)))*qPrev;
 % Angular Bias Prediction
@@ -79,7 +80,13 @@ wProcessNoiseVec = [wR; wV; wQ; wWDriftDot; wADriftDot];
 
 %%
 % State vector prediction with process noise.
-xPred = xPredNoiseFree + wProcessNoiseVec;
+xPred = xPredNoiseFree;% + wProcessNoiseVec;
 
+%%
+% Important Note: We need to multiply Gravity Vector aG by negative one.
+% Along the axis pointed in the direction of gravity, the accelerometer measures -1 [g]. 
+% This is due to the proof-mass being pulled in the direction of gravity, which is equivalent 
+% to a deceleration of 1 [g] in the absence of gravity.
+% Ref: https://openimu.readthedocs.io/en/latest/algorithms/MeasurementVector.html
 end
 

@@ -15,6 +15,9 @@ function [] = main()
 %                       (Time: 28:00 -> End)
 %                   [6] {Velocity in Ref-Frames} https://www.youtube.com/watch?v=ZNVvYg1FOPk&list=PLmiTuMrmGgEMmjb6IXGh8RMWaUV_cS-2v&index=2 
 %                       (Time: start -> 28:00)
+%                   [7] {Quaternion Basics} http://www.tu-berlin.de/fileadmin/fg169/miscellaneous/Quaternions.pdf
+
+%%
 % State Vector
 % x = [r, v, q, wb, ab] State Vector, (1 x 16)
 % r = [rx, ry, rz]      NED Position
@@ -26,11 +29,24 @@ function [] = main()
 clc; clear; close all;% rng('Default');
 % Include directories
 addpath('./subModules');
+addpath('./dataSet/oxts');
 addpath('./dataSet/oxts/data');
+
+%Read Data Time Stamps
+fileName = 'timestamps.txt'; fileID = fopen(fileName, 'r');
+formatSpec = '%4.0f-%2.0f-%2.0f %2.0f:%2.0f:%2.0f.%f';
+timeStamps = cell2mat(textscan(fileID,formatSpec));
+timeInSec = timeStamps(:, 4)*3600 + timeStamps(:, 5)*60 + timeStamps(:, 6) + timeStamps(:, 7) * 10^(-9); %Assumption: Data collected on the same date
+timeSeries = timeInSec - ones(size(timeInSec))*timeInSec(1);
+dtTrue = timeSeries(2:end) - timeSeries(1:end-1);
+% timeStampDiffs = zeros(size(timeStamps));
+% timeStampDiffs(2:end, :) = timeStamps(2:end, :) - timeStamps(1:end-1,:);
+% dtTrue = zeros(size(timeStamps,1),1); 
+% dtTrue(2:end) = timeStampDiffs(2:end, 4)*3600 + timeStampDiffs(2:end, 5)*60 + timeStampDiffs(2:end, 6) + timeStampDiffs(2:end, 7) * 10^(-9); %Assumption: Data collected on the same date
 
 % NED frame origin definition
 gpsLLARef = [49.008644826538 8.3981039999565 112.99059295654]; %lat,long,alt in file 0000000000.txt
-dt = 0.1;   % Sample Time
+dtMean = mean(dtTrue);   % Sample Time
 
 % Sensor specifications
 global stdGyro stdAcc stdDriftDotGyro stdDriftDotAcc
@@ -47,30 +63,30 @@ BS_Gyro = BS_GyroDataSheet * (pi/180) / (3600);             % Units: rad/sec
 VRW_Acc = VRW_AccDataSheet * (1/sqrt(3600));                % Units: m/s/s
 BS_Acc = BS_AccDataSheet * 9.8;                             % Units: m/s
 
-stdGyro = ARW_Gyro/sqrt(dt);    %Ref [3], Thermo-Mechanical White Noise -> Angle Random Walk
-stdAcc = VRW_Acc/sqrt(dt);      %Ref [3], Thermo-Mechanical White Noise -> Angle Random Walk
+stdGyro = ARW_Gyro/sqrt(dtMean);    %Ref [3], Thermo-Mechanical White Noise -> Angle Random Walk
+stdAcc = VRW_Acc/sqrt(dtMean);      %Ref [3], Thermo-Mechanical White Noise -> Angle Random Walk
 stdDriftDotGyro = (2*pi/log(2))*(BS_Gyro^2/ARW_Gyro);	%Ref: https://openimu.readthedocs.io/en/latest/algorithms/STM_Bias.html
 stdDriftDotAcc = (2*pi/log(2))* (BS_Acc^2/VRW_Acc); %Bug Suspected   %Ref: https://openimu.readthedocs.io/en/latest/algorithms/STM_Bias.html
 % Note: Further literature survey suggested 
 
-gyroOffSet = [0.05 0.1 -0.05]';
-accOffSet = [0.5 0 -0.5]';
+gyroOffSet = zeros(3,1);%[0.05 0.1 -0.05]';
+accOffSet = zeros(3,1);%[0.5 0 -0.5]';
 % --> GyroBias = GyroOffSet + GyroDrift;
 % --> AccBias = AccOffSet + AccDrift ;
 
-stdGpsPos = 0.5 * zeros(1,3);                           %CEP, Units: meters, Approximation: CEP=1-sigma,  OXTS Inertial+GNSS RT3000 v2 - (RT3003)
-stdGpsVel = 0.05*(1000/(60*60))*zeros(1,3);             %RMS, Units: m/s, Approximation: RMS=1-sigma, OXTS Inertial+GNSS RT3000 v2 - (RT3003)
-stdEuler = zeros(1,3) .* deg2rad([0.03, 0.03, 0.1]);    %1-sigma, Units: radian, OXTS Inertial+GNSS RT3000 v2 - (RT3003)
+stdGpsPos = 0.5 * ones(1,3);                           %CEP, Units: meters, Approximation: CEP=1-sigma,  OXTS Inertial+GNSS RT3000 v2 - (RT3003)
+stdGpsVel = 0.05*(1000/(60*60))*ones(1,3);             %RMS, Units: m/s, Approximation: RMS=1-sigma, OXTS Inertial+GNSS RT3000 v2 - (RT3003)
+stdEuler = ones(1,3) .* deg2rad([0.03, 0.03, 0.1]);    %1-sigma, Units: radian, OXTS Inertial+GNSS RT3000 v2 - (RT3003)
 
 % Simulation Parameters
-N = 500;    % (dataSamples-1), 1st smaple used for initilization
+N = length(dtTrue); %100    % (dataSamples-1), 1st smaple used for initilization
 M = 1;     % Number of Monte-Carlo runs
 
 %% Extended Kalman Filter simulation
 resXEst = zeros(16,N+1,M);      % Monte-Carlo estimates
 resXEstErr = zeros(16,N+1,M);   % Monte-Carlo estimate errors
 resPDiag = zeros(16,N+1);       % Diagonal term of estimation error covariance matrix
-xTrue = zeros(19, N+1);
+xTrue = zeros(19, N);
 
 % Filtering
 for m = 1:1:M
@@ -78,7 +94,7 @@ for m = 1:1:M
     % --> x = [r, v, q, wb, ab] State Vector, (16 x 1)
     [zMeas, wMeas, aMeas, zTrueIni, R] = measSensorReading(0, gpsLLARef);
     xTrueInit = [zTrueIni(1:6,1); euler2quat(zTrueIni(7:9)); gyroOffSet; accOffSet];
-    stdIni = [2.55, 0.051, 0.5, 0, 0]'; % std for Error in initial guess, %stdIni -> [Pos, Vel, euler, biasW, biasA];
+    stdIni = 10*[2.55, 0.051, 0.5, 0, 0]'; % std for Error in initial guess, %stdIni -> [Pos, Vel, euler, biasW, biasA];
     xInit(1:3,1) = xTrueInit(1:3) + stdIni(1)*randn(3,1);
     xInit(4:6,1) = xTrueInit(4:6) + stdIni(2)*randn(3,1);
     xInit(7:10,1) = euler2quat(quat2euler(xTrueInit(7:10))+ stdIni(3)* randn(3,1));%randQuat(); % xTrueInit(7:10) + euler2quat(stdIni(3)* randn(3,1)); %
@@ -100,12 +116,29 @@ for m = 1:1:M
     aMeasPrev = aMeas;
     
     for n = 1:1:N
-        %%Prediction
+        %%Prediction 
+        clc;
+        %%%%%%%%%%%%
+        fileName = strcat('000000', num2str(n-1, '%0.4d'), '.txt');
+        data = load(fileName);
+        axIdx = 12;ayIdx = 13;azIdx = 14;
+        wxIdx = 18;wyIdx = 19;wzIdx = 20;%:    angular rate around z (rad/s)
+        rollIdx = 4;pitchIdx = 5;yawIdx = 6;
+        eulerENU = [data(rollIdx), data(pitchIdx), data(yawIdx)]'; %Sensor w.r.t. ENU
+        sRb = euler2rot([pi, 0, 0]');       %Rotation matrix of Body frame represented in Sensor frame
+        eRs = euler2rot(eulerENU);          %Rotation matrix of ENU frame represented in Body frame
+%         eRs = sRe';                         %Rotation matrix for Sensor frame represented in ENU frame
+        nRe = [0, 1, 0; 1, 0, 0; 0, 0, -1]; %Rotation matrix for ENU frame represented in NED frame
+        nRs = nRe * eRs;                    %Rotation matrix for Sensor frame represented in NED frame
+        nRb = nRe * eRs * sRb;              %Rotation matrix for Body frame represented in NED frame
+        % disp('nRb New inside dead reckoning code'); disp(nRb);
+
+        %%%%%%%%%%%%
         %Step 1a: State Prediction
-        xPred = stateTransMdl(xPrev, dt, aMeasPrev, wMeasPrev);
+        xPred = stateTransMdl(xPrev, dtTrue(n), aMeasPrev, wMeasPrev, nRb);
         xPred = repairQuaternion(xPred);
         %Step 1b: Process Model
-        [F, Q] = processMdl(xPrev, dt, aMeasPrev, wMeasPrev);
+        [F, Q] = processMdl(xPrev, dtTrue(n), aMeasPrev, wMeasPrev, nRb);
 
         %Step 2: Error Covariance Prediction (P -> Process estimation error covariance matrix)
         PPred = F*PPrev*F' + Q;
@@ -143,17 +176,32 @@ for m = 1:1:M
         aMeasPrev = aMeas;
         if (m == 1)
             xTrue(11:16,n) = xEst(11:16,n); %Bug
+            if true   %For testing only
+                aSensKitti = [data(axIdx), data(ayIdx), data(azIdx)]'; %SensKitti: x->Forward, y->Left, z->Up
+                aBody = [aSensKitti(1), -aSensKitti(2), -aSensKitti(3)]'; %Body: x->Forward, y->Right, z->Down
+                aTrueNED(:,n) = nRb * aBody;
+                if n>1
+                    vTrueNED(:,n) = vTrueNED(:,n-1) + (aTrueNED(:,n)-[0 0 -9.80665]') * dtTrue(n);
+                    pTrueNED(:,n) = pTrueNED(:,n-1) + (vTrueNED(:,n)) * dtTrue(n);
+                else
+                    vTrueNED(:,n) = zTrue(4:6,1);
+                    pTrueNED(:,n) = zTrue(1:3,1);
+                end
+
+                wSensKitti = [data(wxIdx), data(wyIdx), data(wzIdx)]'; %SensKitti: x->Forward, y->Left, z->Up
+                wBody = [wSensKitti(1), -wSensKitti(2), -wSensKitti(3)]'; %Body: x->Forward, y->Right, z->Down
+                wTrue(:,n) = wBody;
+            end
         end
     end
     PDiagComp = [PDiagInit, PDiag];
     xEstComp = [xInit, xEst];
     if (m == 1)
         xTrueInit(17:19,1) = quat2euler(xTrueInit(7:10, 1)); %Data augmented for analysis only
-        xTrue = [xTrueInit, xTrue(:,1:N)]; %For analysis only
+        xTrueComp = [xTrueInit, xTrue]; %For analysis only
     end
     resXEst(:,:,m) = xEstComp;
-%    resXTrue(:,:,m) = xTrueComp;    %For analysis only
-    resXEstErr(:,:,m) = xEstComp - xTrue(1:16,:);
+    resXEstErr(:,:,m) = xEstComp - xTrueComp(1:16,:);
     resPDiag(:,:,m) = PDiagComp;
 end
 
@@ -166,7 +214,6 @@ PDiagAVG = mean(resPDiag,3);
 for n = 1:1:N+1
     xEstAVG(17:19,n) = quat2euler(xEstAVG(7:10,n)); %Data augmented with euler angles for analysis purpose
     xEstErrAVG(17:19,n) = quat2euler(xEstErrAVG(7:10,n)); %Data augmented with euler angles for analysis purpose
-    xTrue(17:19,n) = quat2euler(xTrue(7:10,n)); %Data augmented with euler angles for analysis purpose
     for m = 1:1:size(resXEstErr, 1)
         x_RMSE(m,n) = sqrt(mean(resXEstErr(m,n,:).^2,3));
     end
@@ -175,11 +222,11 @@ end
 
 
 %% plot results
-time = (0:1:N)*dt;
+time = timeSeries;%(0:1:N)*dtMean;
 
 % dispEstStates(NoOfSamples, sampleTime, stateNum)
-NoOfSamples = N;
-sampleTime = dt;
+NoOfSamples = N; %Excluding initial sample at t0
+sampleTime = dtMean;
 
 xPosIdx = 1:3;
 xVelIdx = 4:6;
@@ -188,50 +235,68 @@ xWBIdx = 11:13;
 xABIdx = 14:16;
 xEulerIdx = 17:19;
 
-dispEstStates(xTrue, xEstAVG, NoOfSamples, sampleTime, xPosIdx); suptitle('True/Estimated Position, ');
-dispEstStates(xTrue, xEstAVG, NoOfSamples, sampleTime, xVelIdx); suptitle('True/Estimated Velocity, ');
-dispEstStates(xTrue, xEstAVG, NoOfSamples, sampleTime, xQuatIdx); suptitle('True/Estimated Quaternion, ');
-dispEstStates(xTrue, xEstAVG, NoOfSamples, sampleTime, xEulerIdx); suptitle('True/Estimated Euler, ');
-% dispEstStates(xTrue, xEstAVG, NoOfSamples, sampleTime, xWBIdx); suptitle('True/Estimated Gyro Bias, ');
-% dispEstStates(xTrue, xEstAVG, NoOfSamples, sampleTime, xABIdx); suptitle('True/Estimated Accelerometer Bias, ');
-
-% dispEstErrors(x_RMSE, PDiagComp, NoOfSamples, sampleTime, xPosIdx);  suptitle('Standard Deviation of Position Errors, ');
-% dispEstErrors(x_RMSE, PDiagComp, NoOfSamples, sampleTime, xVelIdx);  suptitle('Standard Deviation of Velocity Errors, ');
-% dispEstErrors(x_RMSE, PDiagComp, NoOfSamples, sampleTime, xQuatIdx);  suptitle('Standard Deviation of Quaternion Errors, ');
-% % dispEstErrors(x_RMSE, PDiagComp, NoOfSamples, sampleTime, xEulerIdx);suptitle('Standard Deviation of Euler Errors, ');
-% % Covariance propagation from quaternion to euler is pending yet
-% dispEstErrors(x_RMSE, PDiagComp, NoOfSamples, sampleTime, xWBIdx);  suptitle('Standard Deviation of Gyro Bias Errors, ');
-% dispEstErrors(x_RMSE, PDiagComp, NoOfSamples, sampleTime, xABIdx);  suptitle('Standard Deviation of Acclerometer Bias Errors, ');
-
-% dispEstErr_3SigmaBound_AccBias(xEstAVG, xEstErrAVG, PDiagComp, NoOfSamples, sampleTime, xPosIdx); suptitle('Position Error with 3-Sigma Bounds View and Absolute Accelerometer Bias');
-% dispEstErr_3SigmaBound_AccBias(xEstAVG, xEstErrAVG, PDiagComp, NoOfSamples, sampleTime, xVelIdx); suptitle('Velocity Error with 3-Sigma Bounds View and Absolute Accelerometer Bias');
-% dispEstErr_3SigmaBound_AccBias(xEstAVG, xEstErrAVG, PDiagComp, NoOfSamples, sampleTime, xQuatIdx); suptitle('Quaternion Error with 3-Sigma Bounds View and Absolute Accelerometer Bias');
-% % dispEstErr_3SigmaBound_AccBias(xEstAVG, xEstErrAVG, PDiagComp, NoOfSamples, sampleTime, xEulerIdx); suptitle('Euler Error with 3-Sigma Bounds View and Absolute Accelerometer Bias');
-% % Covariance propagation from quaternion to euler is pending yet
-% dispEstErr_3SigmaBound_AccBias(xEstAVG, xEstErrAVG, PDiagComp, NoOfSamples, sampleTime, xWBIdx); suptitle('Acceleration Bias Error with 3-Sigma Bounds View and Absolute Accelerometer Bias');
-% dispEstErr_3SigmaBound_AccBias(xEstAVG, xEstErrAVG, PDiagComp, NoOfSamples, sampleTime, xABIdx); suptitle('Angular Velocity Error with 3-Sigma Bounds View and Absolute Accelerometer Bias');
-% dispEstErr_3SigmaBound_GyroBias(xEstAVG, xEstErrAVG, PDiagComp, NoOfSamples, sampleTime, xPosIdx); suptitle('Position Error with 3-Sigma Bounds View and Absolute Gyro Bias');
-% dispEstErr_3SigmaBound_GyroBias(xEstAVG, xEstErrAVG, PDiagComp, NoOfSamples, sampleTime, xVelIdx); suptitle('Velocity Error with 3-Sigma Bounds View and Absolute Gyro Bias');
-% dispEstErr_3SigmaBound_GyroBias(xEstAVG, xEstErrAVG, PDiagComp, NoOfSamples, sampleTime, xQuatIdx); suptitle('Quaternion Error with 3-Sigma Bounds View and Absolute Gyro Bias');
-% % dispEstErr_3SigmaBound_GyroBias(xEstAVG, xEstErrAVG, PDiagComp, NoOfSamples, sampleTime, xEulerIdx); suptitle('Euler Error with 3-Sigma Bounds View and Absolute Gyro Bias');
-% % Covariance propagation from quaternion to euler is pending yet
-% dispEstErr_3SigmaBound_GyroBias(xEstAVG, xEstErrAVG, PDiagComp, NoOfSamples, sampleTime, xWBIdx); suptitle('Acceleration Bias Error with 3-Sigma Bounds View and Absolute Gyro Bias');
-% dispEstErr_3SigmaBound_GyroBias(xEstAVG, xEstErrAVG, PDiagComp, NoOfSamples, sampleTime, xABIdx); suptitle('Angular Velocity Error with 3-Sigma Bounds View and Absolute Gyro Bias');
-
-dispEstStates3D(xTrue, xEstAVG, xPosIdx); suptitle('True/Estimated Position, ');
-dispEstStates3D(xTrue, xEstAVG, xVelIdx); suptitle('True/Estimated Velocity, ');
+dispEstStates(xTrueComp, xEstAVG, xPosIdx, time); suptitle('True/Estimated Position, ');
+dispEstStates(xTrueComp, xEstAVG, xVelIdx, time); suptitle('True/Estimated Velocity, ');
+dispEstStates(xTrueComp, xEstAVG, xQuatIdx, time); suptitle('True/Estimated Quaternion, ');
+dispEstStates(xTrueComp, xEstAVG, xEulerIdx, time); suptitle('True/Estimated Euler, ');
+% dispEstStates(xTrueComp, xEstAVG, xWBIdx, time); suptitle('True/Estimated Gyro Bias, ');
+% dispEstStates(xTrueComp, xEstAVG, xABIdx, time); suptitle('True/Estimated Accelerometer Bias, ');
 % 
+% dispEstErrors(x_RMSE, PDiagComp, xPosIdx, time);  suptitle('Standard Deviation of Position Errors, ');
+% dispEstErrors(x_RMSE, PDiagComp, xVelIdx, time);  suptitle('Standard Deviation of Velocity Errors, ');
+% dispEstErrors(x_RMSE, PDiagComp, xQuatIdx, time);  suptitle('Standard Deviation of Quaternion Errors, ');
+% % dispEstErrors(x_RMSE, PDiagComp, xEulerIdx, time);suptitle('Standard Deviation of Euler Errors, ');
+% % Covariance propagation from quaternion to euler is pending yet
+% dispEstErrors(x_RMSE, PDiagComp, xWBIdx, time);  suptitle('Standard Deviation of Gyro Bias Errors, ');
+% dispEstErrors(x_RMSE, PDiagComp, xABIdx, time);  suptitle('Standard Deviation of Acclerometer Bias Errors, ');
+% 
+dispEstErr_3SigmaBound_AccBias(xEstAVG, xEstErrAVG, PDiagComp, time, xPosIdx); suptitle('Position Error with 3-Sigma Bounds View and Absolute Accelerometer Bias');
+dispEstErr_3SigmaBound_AccBias(xEstAVG, xEstErrAVG, PDiagComp, time, xVelIdx); suptitle('Velocity Error with 3-Sigma Bounds View and Absolute Accelerometer Bias');
+dispEstErr_3SigmaBound_AccBias(xEstAVG, xEstErrAVG, PDiagComp, time, xQuatIdx); suptitle('Quaternion Error with 3-Sigma Bounds View and Absolute Accelerometer Bias');
+% % dispEstErr_3SigmaBound_AccBias(xEstAVG, xEstErrAVG, PDiagComp, time, xEulerIdx); suptitle('Euler Error with 3-Sigma Bounds View and Absolute Accelerometer Bias');
+% % Covariance propagation from quaternion to euler is pending yet
+% dispEstErr_3SigmaBound_AccBias(xEstAVG, xEstErrAVG, PDiagComp, time, xWBIdx); suptitle('Acceleration Bias Error with 3-Sigma Bounds View and Absolute Accelerometer Bias');
+% dispEstErr_3SigmaBound_AccBias(xEstAVG, xEstErrAVG, PDiagComp, time, xABIdx); suptitle('Angular Velocity Error with 3-Sigma Bounds View and Absolute Accelerometer Bias');
+% dispEstErr_3SigmaBound_GyroBias(xEstAVG, xEstErrAVG, PDiagComp, time, xPosIdx); suptitle('Position Error with 3-Sigma Bounds View and Absolute Gyro Bias');
+% dispEstErr_3SigmaBound_GyroBias(xEstAVG, xEstErrAVG, PDiagComp, time, xVelIdx); suptitle('Velocity Error with 3-Sigma Bounds View and Absolute Gyro Bias');
+% dispEstErr_3SigmaBound_GyroBias(xEstAVG, xEstErrAVG, PDiagComp, time, xQuatIdx); suptitle('Quaternion Error with 3-Sigma Bounds View and Absolute Gyro Bias');
+% % dispEstErr_3SigmaBound_GyroBias(xEstAVG, xEstErrAVG, PDiagComp, time, xEulerIdx); suptitle('Euler Error with 3-Sigma Bounds View and Absolute Gyro Bias');
+% % Covariance propagation from quaternion to euler is pending yet
+% dispEstErr_3SigmaBound_GyroBias(xEstAVG, xEstErrAVG, PDiagComp, time, xWBIdx); suptitle('Acceleration Bias Error with 3-Sigma Bounds View and Absolute Gyro Bias');
+% dispEstErr_3SigmaBound_GyroBias(xEstAVG, xEstErrAVG, PDiagComp, time, xABIdx); suptitle('Angular Velocity Error with 3-Sigma Bounds View and Absolute Gyro Bias');
+% 
+% dispEstStates3D(xTrueComp, xEstAVG, xPosIdx); suptitle('True/Estimated Position, ');
+% dispEstStates3D(xTrueComp, xEstAVG, xVelIdx); suptitle('True/Estimated Velocity, ');
+% 
+% 
+% 
+% dispEstErr_3SigmaBound_AccGyroBias(xEstAVG, xEstErrAVG, PDiagComp, time, xPosIdx); suptitle('Position Error with 3-Sigma Bounds View and Biases');
+% dispEstErr_3SigmaBound_AccGyroBias(xEstAVG, xEstErrAVG, PDiagComp, time, xVelIdx); suptitle('Velocity Error with 3-Sigma Bounds View and Biases');
+% dispEstErr_3SigmaBound_AccGyroBias(xEstAVG, xEstErrAVG, PDiagComp, time, xQuatIdx); suptitle('Quaternion Error with 3-Sigma Bounds View and Biases');
 
+% misc(aTrueNED, time, 1:3); suptitle('Linear Acceleration by dead reckoning');
+% % % misc(wTrue, time, 1:3); suptitle('True Angular Velocity');
+% misc(vTrueNED, time, 1:3); suptitle('Linear Velocity by dead reckoning');
+% misc(pTrueNED, time, 1:3); suptitle('Linear Position by dead reckoning');
 
-dispEstErr_3SigmaBound_AccGyroBias(xEstAVG, xEstErrAVG, PDiagComp, NoOfSamples, sampleTime, xPosIdx); suptitle('Position Error with 3-Sigma Bounds View and Biases');
-dispEstErr_3SigmaBound_AccGyroBias(xEstAVG, xEstErrAVG, PDiagComp, NoOfSamples, sampleTime, xVelIdx); suptitle('Velocity Error with 3-Sigma Bounds View and Biases');
-% dispEstErr_3SigmaBound_AccGyroBias(xEstAVG, xEstErrAVG, PDiagComp, NoOfSamples, sampleTime, xQuatIdx); suptitle('Quaternion Error with 3-Sigma Bounds View and Biases');
+end
+
+function misc(xTrueComp, time, stateNum)
+figure('Name', 'Time history of Acc/Gyro');
+% time = (1:1:NoOfSamples)*sampleTime;
+for n = 1:1:length(stateNum)
+    subplot(length(stateNum),1,n); hold on;
+    plot(time(2:end), xTrueComp(stateNum(n),:), 'linewidth', 2);
+    legend({'True'}, 'fontsize', 12);
+    xlabel('Time (sec)', 'fontsize', 12);
+    ylabel('Misc.', 'fontsize', 12); grid on;
+end
 end
 
 
-function dispEstStates(xTrue, xEstAVG, NoOfSamples, sampleTime, stateNum)
+function dispEstStates(xTrue, xEstAVG, stateNum, time)
 figure('Name', 'Time history of an estimation results');
-time = (0:1:NoOfSamples)*sampleTime;
+% time = (0:1:NoOfSamples)*sampleTime;
 for n = 1:1:length(stateNum)
     subplot(length(stateNum),1,n); hold on;
     plot(time, xTrue(stateNum(n),:), 'linewidth', 2);
@@ -242,9 +307,9 @@ for n = 1:1:length(stateNum)
 end
 end
 
-function dispEstErrors(x_RMSE, PDiagComp, NoOfSamples, sampleTime, stateNum)
+function dispEstErrors(x_RMSE, PDiagComp, stateNum, time)
 figure('Name','Actual and estimated standard deviation for estimate errors');
-time = (0:1:NoOfSamples)*sampleTime;
+% time = (0:1:NoOfSamples)*sampleTime;
 
 
 for n = 1:1:length(stateNum)
@@ -272,9 +337,9 @@ grid on;
 end
 
 
-function dispEstErr_3SigmaBound_AccBias(xEstAVG, xEstErr_AVG, PDiagComp, NoOfSamples, sampleTime, stateNum)
+function dispEstErr_3SigmaBound_AccBias(xEstAVG, xEstErr_AVG, PDiagComp, time, stateNum)
 figure('Name','Estimate errors along with 3-sigma bounds and Accelerometer Bias');
-time = (0:1:NoOfSamples)*sampleTime;
+% time = (0:1:NoOfSamples)*sampleTime;
 
 
 for n = 1:1:length(stateNum)
@@ -303,9 +368,9 @@ end
 
 end
 
-function dispEstErr_3SigmaBound_GyroBias(xEstAVG, xEstErr_AVG, PDiagComp, NoOfSamples, sampleTime, stateNum)
+function dispEstErr_3SigmaBound_GyroBias(xEstAVG, xEstErr_AVG, PDiagComp, time, stateNum)
 figure('Name','Estimate errors along with 3-sigma bounds and Gyro Bias');
-time = (0:1:NoOfSamples)*sampleTime;
+% time = (0:1:NoOfSamples)*sampleTime;
 
 
 for n = 1:1:length(stateNum)
@@ -334,9 +399,9 @@ end
 
 end
 
-function dispEstErr_3SigmaBound_AccGyroBias(xEstAVG, xEstErr_AVG, PDiagComp, NoOfSamples, sampleTime, stateNum)
+function dispEstErr_3SigmaBound_AccGyroBias(xEstAVG, xEstErr_AVG, PDiagComp, time, stateNum)
 figure('Name','Estimate errors along with 3-sigma bounds and Accelerometer Bias');
-time = (0:1:NoOfSamples)*sampleTime;
+% time = (0:1:NoOfSamples)*sampleTime;
 
 
 for n = 1:1:length(stateNum)
@@ -378,6 +443,5 @@ for n = 1:1:length(stateNum)
     xlabel('Time (sec)', 'fontsize', 12);
     ylabel(strcat('X', num2str(stateNum(n), '%0.2d'), ' '), 'fontsize', 12); grid on;
 end
-
 end
 

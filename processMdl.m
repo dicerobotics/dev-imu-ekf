@@ -1,4 +1,4 @@
-function [F, Q] = processMdl(xPrev, dt, aMeasPrev, wMeasPrev)%, stdAcc, stdGyro, stdDriftGyro, stdDriftAcc)
+function [F, Q] = processMdl(xPrev, dt, aMeasPrev, wMeasPrev, nRb)%, stdAcc, stdGyro, stdDriftGyro, stdDriftAcc)
 
 % Script Writer:	Awais Arshad
 % Association:      ASCL, KAIST
@@ -11,11 +11,14 @@ global stdGyro stdAcc stdDriftDotGyro stdDriftDotAcc
 qPrev = xPrev(7:10);
 wBiasPrev = xPrev(11:13);
 aBiasPrev = xPrev(14:16);
-aPrev = aMeasPrev - aBiasPrev;
 
-% aG = [0 0 9.8]'; % Gravitational Acceleration, NED Frame
-% nRb = quat2rot(qPrev)'; bRn = nRb';
+aGTrue = [0 0 9.80665]';    %Gravitational Acceleration, NED Frame
+nRb = quat2rot(qPrev); bRn = nRb';
 % aPrev = bRn*(nRb * (aMeasPrev - aBiasPrev) - aG);
+
+aGSensor = -aGTrue;         %Reason: See Important Note Below
+aPrev = nRb'*(nRb * (aMeasPrev - aBiasPrev) - aGSensor);
+
 q0 = qPrev(1); q1 = qPrev(2); q2 = qPrev(3); q3 = qPrev(4);
 Qf = [q1, q0, -q3, q2; ... 
       q2, q3, q0, -q1; ...
@@ -34,15 +37,16 @@ iT = [-qV; ...
        qPrev(1)*eye(3)+qCrossMat];
 
 bigOmg = (s2b(wMeasPrev) - s2b(wBiasPrev));
-nRb = quat2rot(qPrev)';
+% nRb = quat2rot(qPrev)';
+% disp('nRb Prev inside ProcessMdl'); disp(nRb);
 z3 = zeros(3,3); i3 = eye(3); z34 = zeros(3,4); z43 = zeros(4,3); 
             
-f = [z3, i3, z34, z3, z3; ...
+J = [z3, i3, z34, z3, z3; ...
     z3, z3, pvpq, z3, -nRb; ...
     z43, z43, (1/2)*bigOmg, -(1/2)*iT, z43; ...
     z3, z3, z34, z3, z3; ...
     z3, z3, z34, z3, z3];
-F = eye(16) + f * dt;
+F = eye(16) + J * dt;
 
 covR = (stdAcc * dt^2)^2 * eye(3);
 covV = (stdAcc * dt)^2 * eye(3);

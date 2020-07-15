@@ -9,6 +9,11 @@ function [zMeas, wMeas, aMeas, zTrue, R] = measSensorReading(k, gpsLLARef)
 global stdGyro stdAcc stdDriftDotGyro stdDriftDotAcc
 global stdGpsPos stdGpsVel stdEuler
 global gyroOffSet accOffSet
+persistent wDriftTruePre aDriftTruePre
+if (isempty(wDriftTruePre) && isempty(aDriftTruePre))
+    wDriftTruePre = zeros(3,1);
+    aDriftTruePre = zeros(3,1);
+end
 
 % It is assumed that Euler angles are available on board for correction. Values
 % avaialbe in dataset. In practical scenario, they are calculated with 
@@ -68,16 +73,18 @@ data = load(fileName);
 % Body:   x->Forward, y->Right, z->Down
 eulerENU = [data(rollIdx), data(pitchIdx), data(yawIdx)]'; %Sensor w.r.t. ENU
 sRb = euler2rot([pi, 0, 0]');       %Rotation matrix of Body frame represented in Sensor frame
-sRe = euler2rot(eulerENU);          %Rotation matrix of Sensor frame represented in Body frame
-eRs = sRe';                         %Rotation matrix for Sensor frame represented in ENU frame
+eRs = euler2rot(eulerENU);          %Rotation matrix of ENU frame represented in Body frame
+% eRs = sRe';                         %Rotation matrix for Sensor frame represented in ENU frame
 nRe = [0, 1, 0; 1, 0, 0; 0, 0, -1]; %Rotation matrix for ENU frame represented in NED frame
 nRs = nRe * eRs;                    %Rotation matrix for Sensor frame represented in NED frame
 nRb = nRe * eRs * sRb;              %Rotation matrix for Body frame represented in NED frame
-
+% disp('nRb New inside measSensorReading'); disp(nRb);
 
 
 % Measurement Noise Covariance Matrix
 R = diag([stdGpsPos, stdGpsVel, stdEuler].^2); %Sensor meas. noise cov. matrix
+% R = diag([0.5 0.5 0.5 0.0139 0.0139 0.0139 0 0 0]);
+% R = zeros(9,9);
 % R = diag([data(posAccuracyIdx)*ones(1,3), data(velAccuracyIdx)*zeros(1,3), stdEuler].^2); %Sensor meas. noise cov. matrix
 %%
 % Position Readout
@@ -92,28 +99,27 @@ vNED = [data(vnIdx), data(veIdx), -data(vuIdx)]'; %NED Frame, Assumption: upword
 vTrue = vNED;
 
 % Euler Readout
-eulerNED = -rot2euler(nRb);	%Body w.r.t. NED, Rotation Sequence: ZYX
+eulerNED = rot2euler(nRb);	%WTF %Body w.r.t. NED, Rotation Sequence: ZYX
 eulerTrue = eulerNED;   %Consider constraining euler angles here
 
 zTrue = [rTrue; vTrue; eulerTrue];
 zErr = sqrt(diag(R)) .* randn(size(zTrue));
 zMeas = zTrue + zErr;
 
-aSensKitti = -[data(axIdx), data(ayIdx), data(azIdx)]'; %SensKitti: x->Forward, y->Left, z->Up
-aSensKitti(3) = -aSensKitti(3); %Reason: See Important Note Below
+aSensKitti = [data(axIdx), data(ayIdx), data(azIdx)]'; %SensKitti: x->Forward, y->Left, z->Up
+% aSensKitti(3) = -aSensKitti(3); %Reason: See Important Note Below
 aBody = [aSensKitti(1), -aSensKitti(2), -aSensKitti(3)]'; %Body: x->Forward, y->Right, z->Down
 aTrue = aBody;
-
-% Important Note:
-% Along the axis pointed in the direction of gravity, the accelerometer measures -1 [g]. 
-% This is due to the proof-mass being pulled in the direction of gravity, which is equivalent 
-% to a deceleration of 1 [g] in the absence of gravity.
-% Ref: https://openimu.readthedocs.io/en/latest/algorithms/MeasurementVector.html
 
 wSensKitti = [data(wxIdx), data(wyIdx), data(wzIdx)]'; %SensKitti: x->Forward, y->Left, z->Up
 wBody = [wSensKitti(1), -wSensKitti(2), -wSensKitti(3)]'; %Body: x->Forward, y->Right, z->Down
 wTrue = wBody;
 
-wMeas = wTrue + gyroOffSet + stdDriftDotGyro * randn(3,1) +  stdGyro * randn(3,1);
-aMeas = aTrue + accOffSet + stdDriftDotAcc * randn(3,1) + stdAcc * randn(3,1);
+wDriftTrue = wDriftTruePre + stdDriftDotGyro * randn(3,1);
+aDriftTrue = aDriftTruePre + stdDriftDotAcc * randn(3,1);
+wThermalNoiseTrue = stdGyro * randn(3,1);
+aThermalNoiseTrue = stdAcc * randn(3,1);
+wMeas = wTrue + gyroOffSet + wDriftTrue +  wThermalNoiseTrue;
+aMeas = aTrue + accOffSet + aDriftTrue + aThermalNoiseTrue;
+wDriftTruePre = wDriftTrue; aDriftTruePre = aDriftTrue;
 end

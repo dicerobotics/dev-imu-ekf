@@ -20,5 +20,6 @@ dcm(2,3) = sang(3).*cang(2);
 dcm(3,1) = cang(3).*sang(2).*cang(1) + sang(3).*sang(1);
 dcm(3,2) = cang(3).*sang(2).*sang(1) - sang(3).*cang(1);
 dcm(3,3) = cang(3).*cang(2);
+dcm = dcm';
 end
 
