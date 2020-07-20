@@ -1,4 +1,4 @@
-function [F, Q] = processMdl(xPrev, dt, aMeasPrev, wMeasPrev, nRb)%, stdAcc, stdGyro, stdDriftGyro, stdDriftAcc)
+function [F, Q] = processMdl(xPrev, dt, aMeasPrev, wMeasPrev)%, stdAcc, stdGyro, stdDriftGyro, stdDriftAcc)
 % Script Writer:	Awais Arshad
 % Association:      ASCL, KAIST
 % Date:             June 29th, 2020

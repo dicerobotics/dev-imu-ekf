@@ -1,4 +1,4 @@
-function [xPred] = stateTransMdl(xPrev, dt, aMeasPrev, wMeasPrev, nRb)%, stdAcc, stdGyro, stdDriftGyro, stdDriftAcc)
+function [xPred] = stateTransMdl(xPrev, dt, aMeasPrev, wMeasPrev)%, stdAcc, stdGyro, stdDriftGyro, stdDriftAcc)
 % Script Writer:	Awais Arshad
 % Association:      ASCL, KAIST
 % Date:             June 29th, 2020
@@ -77,7 +77,7 @@ wProcessNoiseVec = [wR; wV; wQ; wWDriftDot; wADriftDot];
 
 %%
 % State vector prediction with process noise.
-xPred = xPredNoiseFree;% + wProcessNoiseVec;
+xPred = xPredNoiseFree + wProcessNoiseVec;
 
 %%
 % Important Note: We need to multiply Gravity Vector aG by negative one.
