@@ -1,5 +1,4 @@
 function h = measSensorPrediction(xPred)
-
 % Script Writer:	Awais Arshad
 % Association:      ASCL, KAIST
 % Date:             June 29th, 2020

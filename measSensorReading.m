@@ -63,7 +63,8 @@ orimodeIdx = 30;%:       orientation mode of primary GPS receiver (see gps_mode_
 
 %%
 % Load data file
-fileName = strcat('000000', num2str(k, '%0.4d'), '.txt');
+% fileName = strcat('000000', num2str(k, '%0.4d'), '.txt');
+fileName = strcat(num2str(k, '%0.10d'), '.txt');
 data = load(fileName);
 
 % ENU, NED, Sensor, and Body Frame Relationships
@@ -95,11 +96,12 @@ gpsPosNED = [gpsPosENU(2), gpsPosENU(1), -gpsPosENU(3)]';
 rTrue = gpsPosNED;
 
 % Velocity Readout
-vNED = [data(vnIdx), data(veIdx), -data(vuIdx)]'; %NED Frame, Assumption: upword vector from earth surface is parallel to wgs84 upword vector at referece LLA
+vNED = [data(vnIdx), data(veIdx), -data(vuIdx)]'; %NED Frame, 
+% Assumption: upword vector from local earth surface is parallel to wgs84 upword vector 
 vTrue = vNED;
 
 % Euler Readout
-eulerNED = rot2euler(nRb);	%WTF %Body w.r.t. NED, Rotation Sequence: ZYX
+eulerNED = rot2euler(nRb);	%Body w.r.t. NED, Rotation Sequence: ZYX
 eulerTrue = eulerNED;   %Consider constraining euler angles here
 
 zTrue = [rTrue; vTrue; eulerTrue];
@@ -119,7 +121,7 @@ wDriftTrue = wDriftTruePre + stdDriftDotGyro * randn(3,1);
 aDriftTrue = aDriftTruePre + stdDriftDotAcc * randn(3,1);
 wThermalNoiseTrue = stdGyro * randn(3,1);
 aThermalNoiseTrue = stdAcc * randn(3,1);
-wMeas = wTrue + gyroOffSet + wDriftTrue +  wThermalNoiseTrue;
-aMeas = aTrue + accOffSet + aDriftTrue + aThermalNoiseTrue;
+wMeas = wTrue;% + gyroOffSet + wDriftTrue +  wThermalNoiseTrue;
+aMeas = aTrue;% + accOffSet + aDriftTrue + aThermalNoiseTrue;
 wDriftTruePre = wDriftTrue; aDriftTruePre = aDriftTrue;
 end

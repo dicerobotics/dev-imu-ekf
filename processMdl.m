@@ -1,5 +1,4 @@
 function [F, Q] = processMdl(xPrev, dt, aMeasPrev, wMeasPrev, nRb)%, stdAcc, stdGyro, stdDriftGyro, stdDriftAcc)
-
 % Script Writer:	Awais Arshad
 % Association:      ASCL, KAIST
 % Date:             June 29th, 2020
@@ -12,12 +11,8 @@ qPrev = xPrev(7:10);
 wBiasPrev = xPrev(11:13);
 aBiasPrev = xPrev(14:16);
 
-aGTrue = [0 0 9.80665]';    %Gravitational Acceleration, NED Frame
-nRb = quat2rot(qPrev); bRn = nRb';
-% aPrev = bRn*(nRb * (aMeasPrev - aBiasPrev) - aG);
-
-aGSensor = -aGTrue;         %Reason: See Important Note Below
-aPrev = nRb'*(nRb * (aMeasPrev - aBiasPrev) - aGSensor);
+nRb = quat2rot(qPrev);
+aPrev = (aMeasPrev - aBiasPrev);
 
 q0 = qPrev(1); q1 = qPrev(2); q2 = qPrev(3); q3 = qPrev(4);
 Qf = [q1, q0, -q3, q2; ... 
@@ -26,8 +21,7 @@ Qf = [q1, q0, -q3, q2; ...
 
 aCrossMat = crossProdMat(aPrev);
 pvpq = 2 * Qf * [0, aPrev'; ... 
-                aPrev, -aCrossMat];
-
+                aPrev, -aCrossMat]; 
 qCrossMat = [0 -q3 q2; ...
              q3, 0 -q1; ...
             -q2, q1, 0];
@@ -37,8 +31,6 @@ iT = [-qV; ...
        qPrev(1)*eye(3)+qCrossMat];
 
 bigOmg = (s2b(wMeasPrev) - s2b(wBiasPrev));
-% nRb = quat2rot(qPrev)';
-% disp('nRb Prev inside ProcessMdl'); disp(nRb);
 z3 = zeros(3,3); i3 = eye(3); z34 = zeros(3,4); z43 = zeros(4,3); 
             
 J = [z3, i3, z34, z3, z3; ...

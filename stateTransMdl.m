@@ -1,12 +1,10 @@
 function [xPred] = stateTransMdl(xPrev, dt, aMeasPrev, wMeasPrev, nRb)%, stdAcc, stdGyro, stdDriftGyro, stdDriftAcc)
-
 % Script Writer:	Awais Arshad
 % Association:      ASCL, KAIST
 % Date:             June 29th, 2020
 % Advisor:          Prof. Hyuchoong Bang
 % email:            m.awais@kaist.ac.kr
 % Code Ref:         https://openimu.readthedocs.io/en/latest/algorithms.html
-
 
 % State Transition Model
 % x = [r, v, q, wb, ab] State Vector, (16 x 1)
@@ -34,11 +32,10 @@ qPrev = xPrev(7:10);
 wBiasPrev = xPrev(11:13);
 aBiasPrev = xPrev(14:16);
 
-
 wNoise = wNoise + stdGyro * randn(size(wMeasPrev)); %Bug Suspicion, Gyro's angular random walk (ARW)
 aNoise = 0 + stdAcc * randn(size(aMeasPrev)); %Accelerometer gaussian random noise
 nRb = quat2rot(qPrev); %Please test it, bug suspected
-% disp('nRb Prev inside stateTransMdl'); disp(nRb);
+
 %% State Transition Vection
 % Position Prediction
 rPred = rPrev + vPrev * dt;

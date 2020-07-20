@@ -39,10 +39,6 @@ timeStamps = cell2mat(textscan(fileID,formatSpec));
 timeInSec = timeStamps(:, 4)*3600 + timeStamps(:, 5)*60 + timeStamps(:, 6) + timeStamps(:, 7) * 10^(-9); %Assumption: Data collected on the same date
 timeSeries = timeInSec - ones(size(timeInSec))*timeInSec(1);
 dtTrue = timeSeries(2:end) - timeSeries(1:end-1);
-% timeStampDiffs = zeros(size(timeStamps));
-% timeStampDiffs(2:end, :) = timeStamps(2:end, :) - timeStamps(1:end-1,:);
-% dtTrue = zeros(size(timeStamps,1),1); 
-% dtTrue(2:end) = timeStampDiffs(2:end, 4)*3600 + timeStampDiffs(2:end, 5)*60 + timeStampDiffs(2:end, 6) + timeStampDiffs(2:end, 7) * 10^(-9); %Assumption: Data collected on the same date
 
 % NED frame origin definition
 gpsLLARef = [49.008644826538 8.3981039999565 112.99059295654]; %lat,long,alt in file 0000000000.txt
@@ -69,18 +65,19 @@ stdDriftDotGyro = (2*pi/log(2))*(BS_Gyro^2/ARW_Gyro);	%Ref: https://openimu.read
 stdDriftDotAcc = (2*pi/log(2))* (BS_Acc^2/VRW_Acc); %Bug Suspected   %Ref: https://openimu.readthedocs.io/en/latest/algorithms/STM_Bias.html
 % Note: Further literature survey suggested 
 
-gyroOffSet = zeros(3,1);%[0.05 0.1 -0.05]';
-accOffSet = zeros(3,1);%[0.5 0 -0.5]';
-% --> GyroBias = GyroOffSet + GyroDrift;
-% --> AccBias = AccOffSet + AccDrift ;
+gyroOffSet = zeros(3,1);	% --> GyroBias = GyroOffSet + GyroDrift;
+accOffSet = zeros(3,1);     % --> AccBias = AccOffSet + AccDrift ;
 
 stdGpsPos = 0.5 * ones(1,3);                           %CEP, Units: meters, Approximation: CEP=1-sigma,  OXTS Inertial+GNSS RT3000 v2 - (RT3003)
 stdGpsVel = 0.05*(1000/(60*60))*ones(1,3);             %RMS, Units: m/s, Approximation: RMS=1-sigma, OXTS Inertial+GNSS RT3000 v2 - (RT3003)
 stdEuler = ones(1,3) .* deg2rad([0.03, 0.03, 0.1]);    %1-sigma, Units: radian, OXTS Inertial+GNSS RT3000 v2 - (RT3003)
 
+stdGpsPos = 1 * stdGpsPos %For analysis only
+stdGpsVel = 1 * stdGpsVel %For analysis only
+stdEuler = 1 * stdEuler
 % Simulation Parameters
-N = length(dtTrue); %100    % (dataSamples-1), 1st smaple used for initilization
-M = 1;     % Number of Monte-Carlo runs
+N = length(dtTrue); % (dataSamples-1), 1st smaple used for initilization
+M = 1;              % Number of Monte-Carlo runs
 
 %% Extended Kalman Filter simulation
 resXEst = zeros(16,N+1,M);      % Monte-Carlo estimates
@@ -94,7 +91,8 @@ for m = 1:1:M
     % --> x = [r, v, q, wb, ab] State Vector, (16 x 1)
     [zMeas, wMeas, aMeas, zTrueIni, R] = measSensorReading(0, gpsLLARef);
     xTrueInit = [zTrueIni(1:6,1); euler2quat(zTrueIni(7:9)); gyroOffSet; accOffSet];
-    stdIni = 10*[2.55, 0.051, 0.5, 0, 0]'; % std for Error in initial guess, %stdIni -> [Pos, Vel, euler, biasW, biasA];
+    stdIni = 10*[1, 0.051, 0.1, 0, 0]'; % std for Error in initial guess, %stdIni -> [Pos, Vel, euler, biasW, biasA];
+    stdIni = 1*[0.2, 0.01, 0.1, 0.001, 0.001]'; % std for Error in initial guess, %stdIni -> [Pos, Vel, euler, biasW, biasA];
     xInit(1:3,1) = xTrueInit(1:3) + stdIni(1)*randn(3,1);
     xInit(4:6,1) = xTrueInit(4:6) + stdIni(2)*randn(3,1);
     xInit(7:10,1) = euler2quat(quat2euler(xTrueInit(7:10))+ stdIni(3)* randn(3,1));%randQuat(); % xTrueInit(7:10) + euler2quat(stdIni(3)* randn(3,1)); %
@@ -117,9 +115,8 @@ for m = 1:1:M
     
     for n = 1:1:N
         %%Prediction 
-        clc;
         %%%%%%%%%%%%
-        fileName = strcat('000000', num2str(n-1, '%0.4d'), '.txt');
+        fileName = strcat(num2str(n-1, '%0.10d'), '.txt');
         data = load(fileName);
         axIdx = 12;ayIdx = 13;azIdx = 14;
         wxIdx = 18;wyIdx = 19;wzIdx = 20;%:    angular rate around z (rad/s)
@@ -158,7 +155,7 @@ for m = 1:1:M
 
         %Step 7: State Estimation/Update
         xEst(:,n) = xPred + K * (zMeas - h);
-        xEst(:,n) = repairQuaternion(xEst(:,n));
+        xEst(:,n) = repairQuaternion(xEst(:,n));% disp(xEst(11:16,n));
         if (m==1)
             xTrue(1:6,n) = zTrue(1:6,1);
             xTrue(7:10,n) = euler2quat(zTrue(7:9,1));
@@ -176,22 +173,6 @@ for m = 1:1:M
         aMeasPrev = aMeas;
         if (m == 1)
             xTrue(11:16,n) = xEst(11:16,n); %Bug
-            if true   %For testing only
-                aSensKitti = [data(axIdx), data(ayIdx), data(azIdx)]'; %SensKitti: x->Forward, y->Left, z->Up
-                aBody = [aSensKitti(1), -aSensKitti(2), -aSensKitti(3)]'; %Body: x->Forward, y->Right, z->Down
-                aTrueNED(:,n) = nRb * aBody;
-                if n>1
-                    vTrueNED(:,n) = vTrueNED(:,n-1) + (aTrueNED(:,n)-[0 0 -9.80665]') * dtTrue(n);
-                    pTrueNED(:,n) = pTrueNED(:,n-1) + (vTrueNED(:,n)) * dtTrue(n);
-                else
-                    vTrueNED(:,n) = zTrue(4:6,1);
-                    pTrueNED(:,n) = zTrue(1:3,1);
-                end
-
-                wSensKitti = [data(wxIdx), data(wyIdx), data(wzIdx)]'; %SensKitti: x->Forward, y->Left, z->Up
-                wBody = [wSensKitti(1), -wSensKitti(2), -wSensKitti(3)]'; %Body: x->Forward, y->Right, z->Down
-                wTrue(:,n) = wBody;
-            end
         end
     end
     PDiagComp = [PDiagInit, PDiag];
@@ -223,8 +204,6 @@ end
 
 %% plot results
 time = timeSeries;%(0:1:N)*dtMean;
-
-% dispEstStates(NoOfSamples, sampleTime, stateNum)
 NoOfSamples = N; %Excluding initial sample at t0
 sampleTime = dtMean;
 
@@ -235,10 +214,10 @@ xWBIdx = 11:13;
 xABIdx = 14:16;
 xEulerIdx = 17:19;
 
-dispEstStates(xTrueComp, xEstAVG, xPosIdx, time); suptitle('True/Estimated Position, ');
-dispEstStates(xTrueComp, xEstAVG, xVelIdx, time); suptitle('True/Estimated Velocity, ');
-dispEstStates(xTrueComp, xEstAVG, xQuatIdx, time); suptitle('True/Estimated Quaternion, ');
-dispEstStates(xTrueComp, xEstAVG, xEulerIdx, time); suptitle('True/Estimated Euler, ');
+% dispEstStates(xTrueComp, xEstAVG, xPosIdx, time); suptitle('True/Estimated Position, ');
+% dispEstStates(xTrueComp, xEstAVG, xVelIdx, time); suptitle('True/Estimated Velocity, ');
+% dispEstStates(xTrueComp, xEstAVG, xQuatIdx, time); suptitle('True/Estimated Quaternion, ');
+% dispEstStates(xTrueComp, xEstAVG, xEulerIdx, time); suptitle('True/Estimated Euler, ');
 % dispEstStates(xTrueComp, xEstAVG, xWBIdx, time); suptitle('True/Estimated Gyro Bias, ');
 % dispEstStates(xTrueComp, xEstAVG, xABIdx, time); suptitle('True/Estimated Accelerometer Bias, ');
 % 
@@ -264,19 +243,14 @@ dispEstErr_3SigmaBound_AccBias(xEstAVG, xEstErrAVG, PDiagComp, time, xQuatIdx); 
 % % Covariance propagation from quaternion to euler is pending yet
 % dispEstErr_3SigmaBound_GyroBias(xEstAVG, xEstErrAVG, PDiagComp, time, xWBIdx); suptitle('Acceleration Bias Error with 3-Sigma Bounds View and Absolute Gyro Bias');
 % dispEstErr_3SigmaBound_GyroBias(xEstAVG, xEstErrAVG, PDiagComp, time, xABIdx); suptitle('Angular Velocity Error with 3-Sigma Bounds View and Absolute Gyro Bias');
-% 
+
 % dispEstStates3D(xTrueComp, xEstAVG, xPosIdx); suptitle('True/Estimated Position, ');
 % dispEstStates3D(xTrueComp, xEstAVG, xVelIdx); suptitle('True/Estimated Velocity, ');
-% 
-% 
-% 
+
 % dispEstErr_3SigmaBound_AccGyroBias(xEstAVG, xEstErrAVG, PDiagComp, time, xPosIdx); suptitle('Position Error with 3-Sigma Bounds View and Biases');
 % dispEstErr_3SigmaBound_AccGyroBias(xEstAVG, xEstErrAVG, PDiagComp, time, xVelIdx); suptitle('Velocity Error with 3-Sigma Bounds View and Biases');
 % dispEstErr_3SigmaBound_AccGyroBias(xEstAVG, xEstErrAVG, PDiagComp, time, xQuatIdx); suptitle('Quaternion Error with 3-Sigma Bounds View and Biases');
 
-% misc(aTrueNED, time, 1:3); suptitle('Linear Acceleration by dead reckoning');
-% % % misc(wTrue, time, 1:3); suptitle('True Angular Velocity');
-% misc(vTrueNED, time, 1:3); suptitle('Linear Velocity by dead reckoning');
 % misc(pTrueNED, time, 1:3); suptitle('Linear Position by dead reckoning');
 
 end
@@ -353,7 +327,7 @@ for n = 1:1:length(stateNum)
     elseif (n >= 4) && (n <= 6)     %Velocity
         biasAcc = plot(time, xEstAVG(10+n,:), 'b--', 'linewidth', 2);
     elseif (n >= 7) && (n <= 10)    %Quaternion
-        biasAcc = plot(time, xEstAVG(7+n,:), 'b--', 'linewidth', 2);
+        biasAcc = plot(time, xEstAVG(7+n,:), 'b--', 'linewidth', 2); %Bug. No need to plot Acc Bias here
     elseif (n >= 11) && (n <= 13)   %Accelerometer Bias
         biasAcc = plot(time, xEstAVG(3+n,:), 'b--', 'linewidth', 2);
     elseif (n >= 14) && (n <= 16)   %Gyro Bias
