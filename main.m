@@ -122,7 +122,7 @@ for m = 1:1:M
         %%Update
         %Step 3: Measurement Readout
         [zMeas, wMeas, aMeas, R] = measSensorReading(n, gpsLLARef);
-        H = symObservationMdl(xPred);
+        H = obsMdl(xPred);
         %Step 4: Measurement Prediction
         h = measSensorPrediction(xPred);
 
