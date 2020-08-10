@@ -11,7 +11,7 @@ qPrev = xPrev(7:10);
 wBiasPrev = xPrev(11:13);
 aBiasPrev = xPrev(14:16);
 
-nRb = quat2rot(qPrev);
+nRb = quat2dcm(qPrev');
 aPrev = (aMeasPrev - aBiasPrev);
 
 q0 = qPrev(1); q1 = qPrev(2); q2 = qPrev(3); q3 = qPrev(4);
@@ -21,14 +21,14 @@ Qf = [q1, q0, -q3, q2; ...
 
 aCrossMat = crossProdMat(aPrev);
 pvpq = 2 * Qf * [0, aPrev'; ... 
-                aPrev, -aCrossMat]; 
+                aPrev, -aCrossMat];
 qCrossMat = [0 -q3 q2; ...
              q3, 0 -q1; ...
             -q2, q1, 0];
 
-qV = [qPrev(2), qPrev(3), qPrev(4)];
+qV = [q1, q2, q3];
 iT = [-qV; ...
-       qPrev(1)*eye(3)+qCrossMat];
+       q0*eye(3)+qCrossMat];
 
 bigOmg = (s2b(wMeasPrev) - s2b(wBiasPrev));
 z3 = zeros(3,3); i3 = eye(3); z34 = zeros(3,4); z43 = zeros(4,3); 

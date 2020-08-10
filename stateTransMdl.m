@@ -34,15 +34,15 @@ aBiasPrev = xPrev(14:16);
 
 wNoise = wNoise + stdGyro * randn(size(wMeasPrev)); %Bug Suspicion, Gyro's angular random walk (ARW)
 aNoise = 0 + stdAcc * randn(size(aMeasPrev)); %Accelerometer gaussian random noise
-nRb = quat2rot(qPrev); %Please test it, bug suspected
-
+% nRb = quat2rot(qPrev) %Please test it, bug suspected
+nRb = quat2dcm(qPrev');
 %% State Transition Vection
 % Position Prediction
 rPred = rPrev + vPrev * dt;
 % Velocity Prediction
-aGTrue = [0 0 9.80665]';    %Gravitational Acceleration, NED Frame
-aGSensor = -aGTrue;         %Reason: See Important Note Below
-vPred = vPrev + (nRb * (aMeasPrev - aBiasPrev) - aGSensor) * dt;
+aGNED = [0 0 9.80665]';    %Gravitational Acceleration, NED Frame
+aG_NEDSens = -aGNED;         %Reason: See Important Note Below
+vPred = vPrev + (nRb * (aMeasPrev - aBiasPrev) - aG_NEDSens) * dt;
 % Quaternion Prediction
 qPred = (eye(4) + (dt/2) * (s2b(wMeasPrev) - s2b(wBiasPrev)))*qPrev;
 % Angular Bias Prediction

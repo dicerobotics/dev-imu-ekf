@@ -6,7 +6,7 @@ function [H] = obsMdl(xPred)
 % Advisor:          Dr. Khalid Mehmood Hassan
 % Code Ref:         MATLAB Documents
 % Modified by:      Awais Arshad
-% Date Modified:	July 22nd, 2020
+% Date Modified:	Aug 5th, 2020
 
 obsMdlR = eye(3);
 obsMdlV = eye(3);

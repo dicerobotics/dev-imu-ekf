@@ -10,6 +10,9 @@ function h = measSensorPrediction(xPred)
 rPred = xPred(1:3);
 vPred = xPred(4:6);
 qPred = xPred(7:10);
-eulerPred = quat2euler(qPred);
+% eulerPred = quat2euler(qPred);
+[yaw, pitch, roll] = quat2angle(qPred', 'ZYX');
+eulerBody2NED = [roll, pitch, yaw]';
+eulerPred = eulerBody2NED;
 h = [rPred; vPred; eulerPred];
 end
