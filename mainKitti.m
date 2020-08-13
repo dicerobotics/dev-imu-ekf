@@ -1,12 +1,12 @@
 clc; clear all; close all;% rng('Default');
 
-% addpath('./dataSet/oxtsSync', './dataSet/oxtsSync/data');
-% mainKittiOxts();
-% rmpath('./dataSet/oxtsSync', './dataSet/oxtsSync/data');
-
-addpath('./dataSet/oxtsUnSync', './dataSet/oxtsUnSync/data');
+addpath('./dataSet/oxtsSync', './dataSet/oxtsSync/data');
 mainKittiOxts();
-rmpath('./dataSet/oxtsUnSync', './dataSet/oxtsUnSync/data');
+rmpath('./dataSet/oxtsSync', './dataSet/oxtsSync/data');
+
+% addpath('./dataSet/oxtsUnSync', './dataSet/oxtsUnSync/data');
+% mainKittiOxts();
+% rmpath('./dataSet/oxtsUnSync', './dataSet/oxtsUnSync/data');
 
 function [] = mainKittiOxts()
 % Title:            Inertial Navigation
@@ -41,8 +41,6 @@ function [] = mainKittiOxts()
 
 % Include directories
 addpath('./subModules');
-
-
 
 %Read Data Time Stamps
 fileName = 'timestamps.txt'; fileID = fopen(fileName, 'r');
@@ -95,11 +93,7 @@ M = 1;              % Number of Monte-Carlo runs
 
 %% Extended Kalman Filter simulation
 resXEst = zeros(16,N+1,M);      % Monte-Carlo estimates
-resXEstCorrection = zeros(16,N+1,M);   % Monte-Carlo estimate errors
-resXEstError = zeros(16,N+1,M);   % Monte-Carlo estimate errors
-resPDiag = zeros(16,N+1);       % Diagonal term of estimation error covariance matrix
 xMeas = zeros(19, N);
-xTrue = zeros(19, N);
 xEst = zeros(16, N);
 
 % Filtering
@@ -124,13 +118,11 @@ for m = 1:1:M
               zeros(3,10), eye(3)*stdIni(4)^2, zeros(3,16-13);
               zeros(3, 13), eye(3)*stdIni(5)^2];    
     
-    PDiagInit = diag(PInit);
     xPrev = xInit;
     PPrev = PInit;
     wMeasPrev = wMeas;
     aMeasPrev = aMeas;
-%     figure; hold on;
-    
+   
 for n = 1:1:N
         %%Prediction 
         %Step 1a: State Prediction
@@ -145,7 +137,6 @@ for n = 1:1:N
         %%Update
         %Step 3: Measurement Readout
         [zMeas, wMeas, aMeas, R] = measSensorReading(n, gpsLLARef, dtMean);
-%         plot(n,aMeas(3), '*');
         H = obsMdl(xPred);
         %Step 4: Measurement Prediction
         h = measSensorPrediction(xPred);
@@ -163,56 +154,31 @@ for n = 1:1:N
             xMeas(7:10,n) = angle2quat(zMeas(9,1), zMeas(8,1), zMeas(7,1), 'ZYX')'; 
             xMeas(11:16,n) = xMeasInit(11:16,1);%[gyroOffSet; accOffSet];%Bug: We don't have these values in dataset
             xMeas(17:19,n) = zMeas(7:9,1);
-            
-%             xTrue(1:6,n) = zTrue(1:6,1);
-%             xTrue(7:10,n) = angle2quat(zTrue(9,1), zTrue(8,1), zTrue(7,1), 'ZYX')';
-%             xTrue(11:13,n) = wBias;
-%             xTrue(14:16,n) = aBias;
-%             xTrue(17:19,n) = zTrue(7:9,1);
         end
 
         %Step 8: Error Covariance Estimation/Update
         PEst = (eye(16) - K*H)*PPred;
-%         PDiag(:,n) = diag(PEst);
  
         xPrev = xEst(:,n);
         PPrev = PEst;
         wMeasPrev = wMeas;
         aMeasPrev = aMeas;
 end
-%     PDiagComp = [PDiagInit, PDiag];
     xEstComp = [xInit, xEst];
     if (m == 1)
         [yaw, pitch, roll] = quat2angle(xMeasInit(7:10, 1)', 'ZYX');
         xMeasInit(17:19,1) = [roll, pitch, yaw]';
         xMeasComp = [xMeasInit, xMeas]; %For analysis only
         
-%         [yaw, pitch, roll] = quat2angle(xTrueInit(7:10, 1)', 'ZYX');
-%         xTrueInit(17:19,1) = [roll, pitch, yaw]';
-%         xTrueComp = [xTrueInit, xTrue]; %For analysis only
     end
     resXEst(:,:,m) = xEstComp;
-%     resXEstError(:,:,m) = xEstComp - xTrueComp(1:16,:);
-%     resXEstCorrection(:,:,m) = xEstComp - xMeasComp(1:16,:);
-%     resPDiag(:,:,m) = PDiagComp;
 end
 
 %%
 xEstAVG = mean(resXEst,3); %Average of all monte carlo runs
-% xEstErrorAVG = mean(resXEstError,3); %Average of all monte carlo runs
-% xEstCorrectionAVG = mean(resXEstCorrection,3); %Average of all monte carlo runs
-% x_RMSE = zeros(size(resXEstError, 1),N+1); % Fake Initialization: root mean square error
-% PDiagAVG = mean(resPDiag,3);
 
 for n = 1:1:N+1
     [yaw, pitch, roll] = quat2angle(xEstAVG(7:10,n)', 'ZYX'); xEstAVG(17:19,n) = [roll, pitch, yaw]';
-%     [yaw, pitch, roll] = quat2angle(xEstErrorAVG(7:10,n)', 'ZYX'); xEstErrorAVG(17:19,n) = [roll, pitch, yaw]';
-%     [yaw, pitch, roll] = quat2angle(xEstCorrectionAVG(7:10,n)', 'ZYX'); xEstCorrectionAVG(17:19,n) = [roll, pitch, yaw]';
-    
-%     for m = 1:1:size(resXEstError, 1)
-%         x_RMSE(m,n) = sqrt(mean(resXEstError(m,n,:).^2,3));
-%     end
-%     [yaw, pitch, roll] = quat2angle(x_RMSE(7:10,n)', 'ZYX'); x_RMSE(17:19,n) = [roll, pitch, yaw]';
 end
 
 
@@ -249,7 +215,6 @@ end
 
 
 function dispEstStates3D(xMeasComp, xEstAVG, sVec3D)
-% time = (0:1:NoOfSamples)*sampleTime;
 figure('Name', 'estimation results comparison in 3D');
 plot3(xMeasComp(sVec3D(1),:), xMeasComp(sVec3D(2),:), xMeasComp(sVec3D(3),:), 'r-.', 'linewidth', 2); hold on;
 plot3(xEstAVG(sVec3D(1),:), xEstAVG(sVec3D(2),:), xEstAVG(sVec3D(3),:), 'b--', 'linewidth', 2);
