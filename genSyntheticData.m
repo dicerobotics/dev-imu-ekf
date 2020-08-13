@@ -16,7 +16,7 @@ end
 %%
 function [] = genDataFiles(sampleTimeSeries)
 disp('Generating data files...');
-llaRef = [49.008644826538 8.3981039999565 112.99059295654]; %Must match referece LLA in main file.
+llaRef = [49.008644826538 8.3981039999565 112.99059295654];
 dataFilesPath = './dataSet/oxtsSynthetic/data/';
 if ~exist(dataFilesPath, 'dir')
     mkdir('./dataSet/oxtsSynthetic/', 'data');

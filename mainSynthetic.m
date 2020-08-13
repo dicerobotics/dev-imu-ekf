@@ -43,7 +43,8 @@ timeSeries = timeInSec - ones(size(timeInSec))*timeInSec(1);
 dtTrue = timeSeries(2:end) - timeSeries(1:end-1);
 
 % NED frame origin definition
-gpsLLARef = [49.008644826538 8.3981039999565 112.99059295654]; %lat,long,alt in file 0000000000.txt
+fileName = strcat(num2str(0, '%0.10d'), '.txt'); data = load(fileName);
+gpsLLARef = [data(1), data(2), data(3)];
 dtMean = mean(dtTrue);	%Sample Time
 
 % Sensor specifications
