@@ -33,7 +33,7 @@ aGNED = [0 0 9.80665]';    %Gravitational Acceleration, NED Frame
 wFreq = [1/10, 1/15, 1/5]';
 wAmp = 1*[0 0 pi/4]';  %Keep Roll pitch zero. For gravitation acceleration.
 wNED = wAmp .* cos(2*pi*(wFreq.*sampleTimeSeries)); % Gyroscopic signal varies as a sinosoid.
-angleNed2Body = (wAmp./(2*pi.*wFreq)) .* sin(2*pi*(wFreq.*sampleTimeSeries)); %Angular Displacement
+angleNed2Body = (wAmp./(2*pi.*wFreq)) .* sin(2*pi*(wFreq.*sampleTimeSeries)); %Angular Displacement. True only if roll pitch are zero
 % figure(); plot(sampleTimeSeries, angleNed2Body(3,:));
 % Initial State
 numSamples = size(angleNed2Body,2);
@@ -42,10 +42,10 @@ bRn = angle2dcm(angleNed2Body(3,:), angleNed2Body(2,:), angleNed2Body(1,:), 'ZYX
 for n=1:numSamples
     accBodyGFree = bRn(:,:,n) * accNED_GFree(:,n); %Gravity Free Acceleleration
     aGBody = bRn(:,:,n) * aGNED;
-    accBody = accBodyGFree - aGBody; %nevative sign to compensation sensor measurement principle
+    accBody = accBodyGFree - aGBody; %nevative sign with aGBody id to compensate sensor measurement principle
     
-    wBody = -wNED(:,n); %I am not sure about this statement myself. But it's important.
-    
+    wBody = wNED(:,n); %Angular-rate of the body frame relative to NED frame, MEASURED IN NED FRAME
+ 
     nRb = bRn(:,:,n)';
     nQb = dcm2quat(nRb);
 
@@ -53,9 +53,22 @@ for n=1:numSamples
     xN = [posNED(:,n); velNED(:,n); nQb']; %Nth state vector
     oxtsData = makeOxtsData(xN, llaRef, accBody, wBody);
     
+%     posTargetNED = [200, 150, 300]'; cRb = eye(3);
+%     posTargetBody = bRn * (posTargetNED - posNED(:,n)); %Target postion in body frame of reference
+%     posTargetCam = cRb * posTargetBody; %Target position in Camera frame of reference
+%     posTargetPolarCam = [atan2(posTargetCam(1), posTargetCam(2));
+%                   atan2(posTargetCam(3), sqrt(posTargetCam(1)^2 + posTargetCam(2)^2));
+%                   norm(posTargetCam)]; %[Azimuth, Elevation, Range]'.Camera Sensor in XZ Plane at origin of body axis
+    
+    
     fileName = strcat(num2str(n-1, '%0.10d'), '.txt'); fileIDData = fopen([dataFilesPath, fileName], 'wt' );
-    formatSpec = '%015f %015f %015f %08f %08f %015f %015f %015f %015f %015f %015f %015f %015f %015f %015f %015f %015f %015f %015f %015f %015f %015f %015f %015f %015f %1.0f %1.0f %1.0f %1.0f %1.0f';
-    fprintf(fileIDData, formatSpec,oxtsData); fclose(fileIDData);
+    formatSpecOxts  = '%015f %015f %015f %08f %08f %015f %015f %015f %015f %015f %015f %015f %015f %015f %015f %015f %015f %015f %015f %015f %015f %015f %015f %015f %015f %1.0f %1.0f %1.0f %1.0f %1.0f';
+    fprintf(fileIDData, formatSpecOxts,oxtsData); 
+    
+%     formatSpecCam = ' %015f %015f %015f';
+%     fprintf(fileIDData, formatSpecCam,posTargetPolarCam);
+        
+    fclose(fileIDData);
 end
 
 disp('Data files generation completed successfully');
@@ -138,29 +151,5 @@ for dt = sampleTimeSeries
 end
 fclose(fileIDTimeStamps);
 disp('Time stamps generation completed successfully');
-end
-
-
-
-function [xProp] = stateProp(xPrev, dt, aBody, wBody)
-rPrev = xPrev(1:3);
-vPrev = xPrev(4:6);
-qPrev = xPrev(7:10);
-% nRb = quat2rot(qPrev); %Please test it, bug suspected
-nRb = quat2dcm(qPrev');
-%% State Transition Vection
-
-% Velocity propagation
-aGNED = [0 0 9.80665]';    %Gravitational Acceleration, NED Frame
-aG_NEDSens = -aGNED;         %Reason: See Important Note Below, Roll/Pitch Must be Zero
-vPred = vPrev + (nRb * aBody - aG_NEDSens) * dt; %Roll/Pitch Must be Zero
-
-% Position propagation
-rPred = rPrev + vPrev * dt;
-
-% Quaternion propagation
-qPred = (eye(4) + (dt/2) * (s2b(wBody)))*qPrev;
-% State Vector propagation without process noise
-xProp = [rPred; vPred; qPred];
 end
 

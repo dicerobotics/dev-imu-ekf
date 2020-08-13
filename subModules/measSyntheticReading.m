@@ -1,4 +1,4 @@
-function [zMeas, wMeas, aMeas, R] = measSensorReading(k, gpsLLARef)
+function [zMeas, wMeas, aMeas, R, zTrue, wBiasTrue, aBiasTrue] = measSyntheticReading(k, gpsLLARef, dt)
 % Script Writer:	Awais Arshad
 % Association:      ASCL, KAIST
 % Date:             June 29th, 2020
@@ -64,43 +64,78 @@ data = load(fileName);
 % NED:  x->North, y-> East, z->Down (Nadir)
 % Sensor:  x->Forward, y-> Left, z->Top
 % Body:   x->Forward, y->Right, z->Down
-eulerENU = [data(rollIdx), data(pitchIdx), data(yawIdx)]'; %Sensor w.r.t. ENU
-sRb = euler2rot([pi, 0, 0]');       %Rotation matrix of Body frame represented in Sensor frame
-eRs = euler2rot(eulerENU);          %Rotation matrix for Sensor frame represented in ENU frame
-nRe = [0, 1, 0; 1, 0, 0; 0, 0, -1]; %Rotation matrix for ENU frame represented in NED frame
-nRb = nRe * eRs * sRb;              %Rotation matrix for Body frame represented in NED frame
+
+
+global stdGyro stdAcc stdDriftDotGyro stdDriftDotAcc
+global gyroOffSet accOffSet	
 
 % Measurement Noise Covariance Matrix
 R = diag([stdGpsPos, stdGpsVel, stdEuler].^2); %Sensor meas. noise cov. matrix
 % R = diag([data(posAccuracyIdx)*ones(1,3), data(velAccuracyIdx)*zeros(1,3), stdEuler].^2); %Sensor meas. noise cov. matrix
+
+persistent wDriftTruePre aDriftTruePre	
+if (isempty(wDriftTruePre))	
+    wDriftTruePre = zeros(3,1);	
+    disp('Initializing Gyroscopic Drift Values inside measSyntheticReading.m function');
+end
+if (isempty(aDriftTruePre))	
+    aDriftTruePre = zeros(3,1);
+    disp('Initializing Accelerometer Drift Values inside measSyntheticReading.m function');
+end
+
 %%
 % Position Readout
-gpsPosLLA = [data(latIdx), data(lonIdx), data(altIdx)]; %GPS reading
-gpsPosECEF = wgslla2xyz(gpsPosLLA(1), gpsPosLLA(2), gpsPosLLA(3));
-gpsPosENU = wgsxyz2enu(gpsPosECEF, gpsLLARef(1), gpsLLARef(2), gpsLLARef(3));
-gpsPosNED = [gpsPosENU(2), gpsPosENU(1), -gpsPosENU(3)]'; 
-rMeas = gpsPosNED;
+wgs84 = referenceEllipsoid('wgs84');
+[xNorth,yEast,zDown] = geodetic2ned(data(latIdx), data(lonIdx), data(altIdx), gpsLLARef(1), gpsLLARef(2), gpsLLARef(3),wgs84);
+rTrue = [xNorth,yEast,zDown]';
 
 % Velocity Readout
-vNED = [data(vnIdx), data(veIdx), -data(vuIdx)]'; %NED Frame, 
+vNED = [data(vnIdx), data(veIdx), -data(vuIdx)]'; %NED Frame
 % Assumption: upword vector from local earth surface is parallel to wgs84 upword vector 
-vMeas = vNED;
+vTrue = vNED;
 
 % Euler Readout
-eulerNED = rot2euler(nRb);	%Body w.r.t. NED, Rotation Sequence: ZYX
-eulerMeas = eulerNED;   %Consider constraining euler angles here
+eulerENU2Sensor = [data(rollIdx), data(pitchIdx), data(yawIdx)]';
+sRe = angle2dcm(eulerENU2Sensor(3), eulerENU2Sensor(2), eulerENU2Sensor(1), 'ZYX'); eRs = sRe';
+sRb = angle2dcm(0, 0, pi, 'ZYX');
+nRe = [0, 1, 0; ...
+       1, 0, 0; ...
+       0, 0, -1];
+nRb = nRe * eRs * sRb;
 
-% Measurement Vector
-zMeas = [rMeas; vMeas; eulerMeas];
+[yaw, pitch, roll] = dcm2angle(nRb, 'ZYX'); 
+eulerBody2NED = [roll, pitch, yaw]';
+eulerTrue = eulerBody2NED;
+
+% Groud Truth Vector
+zTrue = [rTrue; vTrue; eulerTrue];
+zErr = sqrt(diag(R)) .* randn(size(zTrue));
+zMeas = zTrue + zErr;
 
 %Accelerometer Readout
 aSensKitti = [data(axIdx), data(ayIdx), data(azIdx)]'; %SensKitti: x->Forward, y->Left, z->Up
 aBody = [aSensKitti(1), -aSensKitti(2), -aSensKitti(3)]'; %Body: x->Forward, y->Right, z->Down
-aMeas = aBody;
+aTrue = aBody;
 
 %Gyro Readout
 wSensKitti = [data(wxIdx), data(wyIdx), data(wzIdx)]'; %SensKitti: x->Forward, y->Left, z->Up
 wBody = [wSensKitti(1), -wSensKitti(2), -wSensKitti(3)]'; %Body: x->Forward, y->Right, z->Down
-wMeas = wBody;
+% wBody is Angular-rate of the body frame relative to NED frame, MEASURED IN NED FRAME
+wTrue = -wBody;%wTrue is Angular-rate of the body frame relative to NED frame, MEASURED IN BODY FRAME
 
+%%
+% Drift
+wDriftTrue = wDriftTruePre + stdDriftDotGyro * dt * randn(3,1);
+aDriftTrue = aDriftTruePre + stdDriftDotAcc * dt * randn(3,1);
+% Bias
+wBiasTrue = gyroOffSet + wDriftTrue;
+aBiasTrue = accOffSet + aDriftTrue;
+% Thermal Noise
+wNoise = stdGyro * randn(3,1);   %Thermal Noise
+aNoise = stdAcc * randn(3,1);	%Thermal Noise
+% Measurements
+wMeas = wTrue + wBiasTrue +  wNoise;	
+aMeas = aTrue + aBiasTrue + aNoise;	
+
+wDriftTruePre = wDriftTrue; aDriftTruePre = aDriftTrue;
 end
