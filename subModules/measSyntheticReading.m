@@ -1,4 +1,4 @@
-function [zMeas, wMeas, aMeas, R, zTrue, wBiasTrue, aBiasTrue] = measSyntheticReading(k, gpsLLARef, dt)
+function [zMeas, wMeas, aMeas, R, zTrue, wBiasTrue, aBiasTrue, camMeas, rCam] = measSyntheticReading(k, gpsLLARef, dt)
 % Script Writer:	Awais Arshad
 % Association:      ASCL, KAIST
 % Date:             June 29th, 2020
@@ -7,6 +7,7 @@ function [zMeas, wMeas, aMeas, R, zTrue, wBiasTrue, aBiasTrue] = measSyntheticRe
 % Code Ref:         See function main();
 
 global stdGpsPos stdGpsVel stdEuler
+global stdCamHor stdCamVer
 
 % It is assumed that Euler angles are available on board for correction. Values
 % avaialbe in dataset. In practical scenario, they are calculated with 
@@ -15,44 +16,47 @@ global stdGpsPos stdGpsVel stdEuler
 
 
 %Define Indices accroding to data files
-latIdx = 1;%:   latitude of the oxts-unit (deg)
-lonIdx = 2;%:   longitude of the oxts-unit (deg)
-altIdx = 3;%:   altitude of the oxts-unit (m)
+latIdx = 1;     %:latitude of the oxts-unit (deg)
+lonIdx = 2;     %:longitude of the oxts-unit (deg)
+altIdx = 3;     %:altitude of the oxts-unit (m)
 
-rollIdx = 4;%:  roll angle (rad),    0 = level, positive = left side up,      range: -pi   .. +pi
-pitchIdx = 5;%: pitch angle (rad),   0 = level, positive = front down,        range: -pi/2 .. +pi/2
-yawIdx = 6;%:   heading (rad),       0 = east,  positive = counter clockwise, range: -pi   .. +pi
+rollIdx = 4;    %:roll angle (rad),    0 = level, positive = left side up,      range: -pi   .. +pi
+pitchIdx = 5;   %:pitch angle (rad),   0 = level, positive = front down,        range: -pi/2 .. +pi/2
+yawIdx = 6;     %:heading (rad),       0 = east,  positive = counter clockwise, range: -pi   .. +pi
 
-vnIdx = 7;%:    velocity towards north (m/s)
-veIdx = 8;%:    velocity towards east (m/s)
-vfIdx = 9;%:    forward velocity, i.e. parallel to earth-surface (m/s)
-vlIdx = 10;%:    leftward velocity, i.e. parallel to earth-surface (m/s)
-vuIdx = 11;%:    upward velocity, i.e. perpendicular to earth-surface (m/s)
+vnIdx = 7;      %:velocity towards north (m/s)
+veIdx = 8;      %:velocity towards east (m/s)
+vfIdx = 9;      %:forward velocity, i.e. parallel to earth-surface (m/s)
+vlIdx = 10;     %:leftward velocity, i.e. parallel to earth-surface (m/s)
+vuIdx = 11;     %:upward velocity, i.e. perpendicular to earth-surface (m/s)
 
-axIdx = 12;%:    acceleration in x, i.e. in direction of vehicle front (m/s^2)
-ayIdx = 13;%:    acceleration in y, i.e. in direction of vehicle left (m/s^2)
-azIdx = 14;%:    acceleration in z, i.e. in direction of vehicle top (m/s^2)
+axIdx = 12;     %:acceleration in x, i.e. in direction of vehicle front (m/s^2)
+ayIdx = 13;     %:acceleration in y, i.e. in direction of vehicle left (m/s^2)
+azIdx = 14;     %:acceleration in z, i.e. in direction of vehicle top (m/s^2)
 
-afIdx = 15;%:    forward acceleration (m/s^2)
-alIdx = 16;%:    leftward acceleration (m/s^2)
-auIdx = 17;%:    upward acceleration (m/s^2)
+afIdx = 15;     %:forward acceleration (m/s^2)
+alIdx = 16;     %:leftward acceleration (m/s^2)
+auIdx = 17;     %:upward acceleration (m/s^2)
 
-wxIdx = 18;%:    angular rate around x (rad/s)
-wyIdx = 19;%:    angular rate around y (rad/s)
-wzIdx = 20;%:    angular rate around z (rad/s)
+wxIdx = 18;     %:angular rate around x (rad/s)
+wyIdx = 19;     %:angular rate around y (rad/s)
+wzIdx = 20;     %:angular rate around z (rad/s)
 
-wfIdx = 21;%:    angular rate around forward axis (rad/s)
-wlIdx = 22;%:    angular rate around leftward axis (rad/s)
-wuIdx = 23;%:    angular rate around upward axis (rad/s)
+wfIdx = 21;     %:angular rate around forward axis (rad/s)
+wlIdx = 22;     %:angular rate around leftward axis (rad/s)
+wuIdx = 23;     %:angular rate around upward axis (rad/s)
 
 posAccuracyIdx = 24;%:  velocity accuracy (north/east in m)
 velAccuracyIdx = 25;%:  velocity accuracy (north/east in m/s)
 
-navstatIdx = 26;%:       navigation status (see navstat_to_string)
-numsatsIdx = 27;%:       number of satellites tracked by primary GPS receiver
-posmodeIdx = 28;%:       position mode of primary GPS receiver (see gps_mode_to_string)
-velmodeIdx = 29;%:       velocity mode of primary GPS receiver (see gps_mode_to_string)
-orimodeIdx = 30;%:       orientation mode of primary GPS receiver (see gps_mode_to_string)
+navstatIdx = 26;    %:navigation status (see navstat_to_string)
+numsatsIdx = 27;    %:number of satellites tracked by primary GPS receiver
+posmodeIdx = 28;    %:position mode of primary GPS receiver (see gps_mode_to_string)
+velmodeIdx = 29;    %:velocity mode of primary GPS receiver (see gps_mode_to_string)
+orimodeIdx = 30;    %:orientation mode of primary GPS receiver (see gps_mode_to_string)
+
+camHorIdx = 31;	%Camera Sensor Horizontal Index
+camVerIdx = 32;	%Camera Sensor Vertical Index
 
 %%
 % Load data file
@@ -71,6 +75,7 @@ global gyroOffSet accOffSet
 
 % Measurement Noise Covariance Matrix
 R = diag([stdGpsPos, stdGpsVel, stdEuler].^2); %Sensor meas. noise cov. matrix
+rCam = diag([stdCamHor, stdCamVer].^2); %Sensor_Cam meas. noise cov. matrix
 % R = diag([data(posAccuracyIdx)*ones(1,3), data(velAccuracyIdx)*zeros(1,3), stdEuler].^2); %Sensor meas. noise cov. matrix
 
 persistent wDriftTruePre aDriftTruePre	
@@ -123,6 +128,9 @@ wBody = [wSensKitti(1), -wSensKitti(2), -wSensKitti(3)]'; %Body: x->Forward, y->
 % wBody is Angular-rate of the body frame relative to NED frame, MEASURED IN NED FRAME
 wTrue = -wBody;%wTrue is Angular-rate of the body frame relative to NED frame, MEASURED IN BODY FRAME
 
+%Camera Readout
+camTrue = [data(camHorIdx), data(camVerIdx)]';
+
 %%
 % Drift
 wDriftTrue = wDriftTruePre + stdDriftDotGyro * dt * randn(3,1);
@@ -136,6 +144,7 @@ aNoise = stdAcc * randn(3,1);	%Thermal Noise
 % Measurements
 wMeas = wTrue + wBiasTrue +  wNoise;	
 aMeas = aTrue + aBiasTrue + aNoise;	
+camMeas = camTrue + [stdCamHor, stdCamVer]' .* randn(2,1);
 
 wDriftTruePre = wDriftTrue; aDriftTruePre = aDriftTrue;
 end

@@ -28,6 +28,7 @@ function [] = mainSynthetic()
 % ab = [abx, aby, abz]  Accelerometer Bias
 
 %% Initialization
+% genSyntheticData(); %Uncommnet this line for code for first time run
 clc; clear all; close all;% rng('Default');
 % Include directories
 addpath('./subModules');
@@ -51,6 +52,8 @@ dtMean = mean(dtTrue);	%Sample Time
 global stdGyro stdAcc stdDriftDotGyro stdDriftDotAcc
 global stdGpsPos stdGpsVel stdEuler
 global gyroOffSet accOffSet
+global stdCamHor stdCamVer
+
 
 ARW_GyroDataSheet = 0.2;	%Angular Random Walk, Units: degree/rt-hr, OXTS Inertial+GNSS RT3000 v2 - (RT3003)
 BS_GyroDataSheet = 2.0;     %Bias Stability, Units: degree/hr, OXTS Inertial+GNSS RT3000 v2 - (RT3003)
@@ -80,6 +83,8 @@ stdGpsPos = 0.5 * ones(1,3);                           %CEP, Units: meters, Appr
 stdGpsVel = 0.05*(1000/(60*60))*ones(1,3);             %RMS, Units: m/s, Approximation: RMS=1-sigma, OXTS Inertial+GNSS RT3000 v2 - (RT3003)
 stdEuler = ones(1,3) .* deg2rad([0.03, 0.03, 0.1]);    %1-sigma, Units: radian, OXTS Inertial+GNSS RT3000 v2 - (RT3003)
 
+stdCamHor = 0.001; %Dependent upon focal length, pixel size, sensor quality etc.
+stdCamVer = 0.001; %Dependent upon focal length, pixel size, sensor quality etc.
 % Simulation Parameters
 N = length(dtTrue); % (dataSamples-1), 1st smaple used for initilization
 M = 1;              % Number of Monte-Carlo runs
@@ -97,7 +102,7 @@ xEst = zeros(16, N);
 for m = 1:1:M
     % Filter Parameter Initialization
     % --> x = [r, v, q, wb, ab] State Vector, (16 x 1)
-    [zMeas, wMeas, aMeas, ~, zTrue, ~, ~] = measSyntheticReading(0, gpsLLARef, dtMean);
+    [zMeas, wMeas, aMeas, ~, zTrue, ~, ~,~,~] = measSyntheticReading(0, gpsLLARef, dtMean);
 
     xMeasInit = [zMeas(1:6,1); angle2quat(zMeas(9), zMeas(8), zMeas(7), 'ZYX')'; gyroOffSet; accOffSet];
     xTrueInit = [zTrue(1:6,1); angle2quat(zTrue(9), zTrue(8), zTrue(7), 'ZYX')';  gyroOffSet; accOffSet];
@@ -135,7 +140,7 @@ for n = 1:1:N
         
         %%Update
         %Step 3: Measurement Readout
-        [zMeas, wMeas, aMeas, R, zTrue, wBias, aBias] = measSyntheticReading(n, gpsLLARef, dtMean);
+        [zMeas, wMeas, aMeas, R, zTrue, wBias, aBias,~,~] = measSyntheticReading(n, gpsLLARef, dtMean);
 %         plot(n,aMeas(3), '*');
         H = obsMdl(xPred);
         %Step 4: Measurement Prediction
