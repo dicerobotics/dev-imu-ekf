@@ -28,7 +28,7 @@ function [] = mainSynthetic()
 % ab = [abx, aby, abz]  Accelerometer Bias
 
 %% Initialization
-% genSyntheticData(); %Uncommnet this line for code for first time run
+% genSyntheticDataCam(); %Uncommnet this line for code for first time run
 clc; clear all; close all;% rng('Default');
 % Include directories
 addpath('./subModules');
@@ -71,8 +71,9 @@ stdDriftDotGyro = (2*pi/log(2))*(BS_Gyro^2/ARW_Gyro);	%Ref: https://openimu.read
 stdDriftDotAcc = (2*pi/log(2))* (BS_Acc^2/VRW_Acc); %Ref: https://openimu.readthedocs.io/en/latest/algorithms/STM_Bias.html
 
 stdGyro = 1 * stdGyro;
-stdDriftDotAcc = 10000 * stdDriftDotAcc; %Increase value see considerable effect in output graphs
-stdDriftDotGyro = 10000 * stdDriftDotGyro; %Increase value see considerable effect in output graphs
+stdDriftDotAcc = 1000 * stdDriftDotAcc; %Increase value see considerable effect in output graphs
+stdDriftDotGyro = 1000 * stdDriftDotGyro; %Increase value see considerable effect in output graphs
+
 
 % Note: Further literature survey suggested 
 
@@ -107,10 +108,11 @@ for m = 1:1:M
     xMeasInit = [zMeas(1:6,1); angle2quat(zMeas(9), zMeas(8), zMeas(7), 'ZYX')'; gyroOffSet; accOffSet];
     xTrueInit = [zTrue(1:6,1); angle2quat(zTrue(9), zTrue(8), zTrue(7), 'ZYX')';  gyroOffSet; accOffSet];
 
-    stdIni = [mean(stdGpsPos), mean(stdGpsVel), 0, 0, 0]'; % std for Error in initial guess, %stdIni -> [Pos, Vel, euler, biasW, biasA];
+%     stdIni = [mean(stdGpsPos), mean(stdGpsVel), 3*pi/6, 0.1, 0.1]'; % std for Error in initial guess, %stdIni -> [Pos, Vel, euler, biasW, biasA];
+    stdIni = [mean(stdGpsPos), mean(stdGpsVel), 3*pi/4, 1, 1]'; % std for Error in initial guess, %stdIni -> [Pos, Vel, euler, biasW, biasA];
     xInit(1:3,1) = xTrueInit(1:3) + stdIni(1)*randn(3,1);
     xInit(4:6,1) = xTrueInit(4:6) + stdIni(2)*randn(3,1);
-    xInit(7:10,1) = angle2quat(zTrue(9), zTrue(8), zTrue(7), 'ZYX')';
+    xInit(7:10,1) = angle2quat(zTrue(9)+pi/10, zTrue(8)-pi/10, zTrue(7)+pi/2, 'ZYX')';
     xInit(11:13,1) = xTrueInit(11:13) + stdIni(4)*randn(3,1);%zeros(3,1);%
     xInit(14:16,1) = xTrueInit(14:16) + stdIni(5)*randn(3,1);%zeros(3,1);%
 
@@ -199,6 +201,21 @@ xEstErrorAVG = mean(resXEstError,3); %Average of all monte carlo runs
 xEstCorrectionAVG = mean(resXEstCorrection,3); %Average of all monte carlo runs
 x_RMSE = zeros(size(resXEstError, 1),N+1); % Fake Initialization: root mean square error
 PDiagAVG = mean(resPDiag,3);
+
+%%
+% posVec = xTrueComp(1:3,:);
+% disVec = zeros(1, size(posVec, 2));
+% disVec(1) = norm((posVec(:,1)));
+% for i=2:1:size(posVec,2)
+%     disVec(i) = disVec(i-1) + norm(posVec(:,i) - posVec(:,i-1));
+% end
+% pause(1);
+
+
+
+
+%%
+
 
 for n = 1:1:N+1
     [yaw, pitch, roll] = quat2angle(xEstAVG(7:10,n)', 'ZYX'); xEstAVG(17:19,n) = [roll, pitch, yaw]';

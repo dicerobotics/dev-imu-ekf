@@ -5,7 +5,7 @@ addpath('./subModules');
 
 startTime = datetime; %current date and time
 sampleTime = 0.01; %seconds
-duration = 15; %seconds
+duration = 150; %seconds
 sampleTimeSeries = 0:sampleTime:duration; %seconds, First sample at zero
 
 genTimeStamps(startTime, sampleTimeSeries);
